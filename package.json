@@ -1,0 +1,8 @@
+{
+  "name": "ball-game",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "latest"
+  }
+}
