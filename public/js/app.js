@@ -1,4 +1,4 @@
-import { createEngine } from './engine.mjs';
+import { createEngine, rankFor, RANKS } from './engine.mjs';
 
 const NBA_DATA = await fetch(new URL('../data/nba.json', import.meta.url)).then(r => r.json());
 const E = createEngine(NBA_DATA);
@@ -215,8 +215,10 @@ async function spin(which = 'both') {
   if (!S.started || S.spinning || draftDone() || STAGE !== 'draft' || VIEW !== 'draft') return;
   if (which === 'both' && S.spin) return;
   S.spinning = true; S.view = null; S.openId = null; S.sel = null; refresh();
+  if (RUN && !RUN.id && !RUN.failed) await RUN.ready;
   let team = S.spin?.team, dec = S.spin?.dec, tries = 0;
   if (MODE === 'challenge' && CH) ({ team, dec } = seededSpin(which, team, dec));
+  else if (RUN && RUN.id) { ({ team, dec } = E.spinFor(RUN.seed, S.rounds.length, which, team, dec, eligible)); RUN.spins.push(which); }
   else do { if (which !== 'era') team = randOf(E.TEAMS); if (which !== 'team') dec = randOf(E.DECADES); tries++; } while (!eligible(team, dec) && tries < 200);
   S.spin = { team, dec };
   const jobs = [];
@@ -312,6 +314,7 @@ function commit(p, slot) {
   const row = document.querySelector(`.prow2[data-id="${p.id}"]`);
   const from = row ? row.querySelector('.chip-ini').getBoundingClientRect() : null;
   S.picks[slot] = p; S.rounds.push({ team: S.spin.team.id, dec: S.spin.dec.id, pickId: p.id, slot }); S.spin = null;
+  if (RUN && RUN.id) { RUN.rounds.push({ spins: RUN.spins, pick: p.id, slot }); RUN.spins = []; }
   S.lastPick = { p, slot }; S.sel = null; S.popSlot = slot;
   setReels(null, null); refresh();
   const svg = $('court').getBoundingClientRect(); const k = svg.width / 500;
@@ -424,7 +427,15 @@ const RATING_HELP = `<p style="margin:8px 0 6px"><b>Player rating</b> comes from
 const CATS = [['team', 'Team'], ['offense', 'Offense'], ['defense', 'Defense and size'], ['moment', 'Big moments'], ['health', 'Health']];
 $('ratingHelp').innerHTML = RATING_HELP;
 $('guide').innerHTML = '<p class="pmeta" style="margin:0">Perks come from each player\'s real career and stats. Each player has at most one: his biggest. The number on a perk is what it adds to your team rating.</p>' + CATS.map(([c, label]) => `<div><h5>${label}</h5><div class="row">${Object.entries(E.PERKS).filter(([, P]) => P.cat === c).map(([k, P]) => `<span>${perkPill(k)}</span><span>${P.desc}</span>`).join('')}</div></div>`).join('');
-function resetDraft() { stopPlay(); stopPO(); S = fresh(); S.started = true; STAGE = 'draft'; setReels(null, null); refresh(); }
+// ranked run: logged-in Classic drafts use spins from the server's seed; the server plays the season when the team is locked
+let RUN = null;
+function newRun() {
+  RUN = null; if (MODE !== 'classic' || !ACC.token) return;
+  const run = { id: null, seed: null, spins: [], rounds: [] };
+  run.ready = API.call('/api/runs', {}).then(r => { if (r && r.ok) { run.id = r.id; run.seed = r.seed; } else run.failed = true; });
+  RUN = run;
+}
+function resetDraft() { stopPlay(); stopPO(); S = fresh(); S.started = true; STAGE = 'draft'; setReels(null, null); newRun(); refresh(); }
 $('reset').onclick = () => resetDraft();
 function playAgain() { resetDraft(); showView('draft'); }
 $('againBtn').onclick = playAgain;
@@ -432,11 +443,20 @@ $('againBtn').onclick = playAgain;
 // ---------- season ----------
 let PLAY = { timer: null, speed: 45, i: 0, res: null, paused: false };
 function stopPlay() { clearTimeout(PLAY.timer); PLAY.timer = null; }
-function startSeason() {
+let locking = false;
+async function startSeason() {
+  if (locking) return;
   stopPO();
-  OPPS = E.league(Math.floor(Math.random() * 1e9)); // a new set of 29 historical opponents every season
+  if (RUN && RUN.id && !RUN.locked && RUN.rounds.length === 5) {
+    locking = true; toast('<b>Locking in your team…</b><span>This season counts on the leaderboard.</span>');
+    const r = await API.call(`/api/runs/${RUN.id}/lock`, { rounds: RUN.rounds }); locking = false;
+    if (r && r.ok) RUN.locked = r;
+    else { RUN = null; toast(`<b>This season won't be ranked</b><span>${r && r.error ? esc(r.error) : 'Couldn\'t reach the server.'}</span>`); }
+  }
+  const sd = RUN && RUN.locked ? E.runSeeds(RUN.locked.sim) : null; const rnd = () => Math.floor(Math.random() * 1e9);
+  OPPS = E.league(sd ? sd.league : rnd()); // a new set of 29 historical opponents every season
   const players = E.SLOTS.map(s => S.picks[s]); const lt = E.lineupTable(players);
-  const res = E.simSeason(players, lt, Math.floor(Math.random() * 1e9), OPPS, true);
+  const res = E.simSeason(players, lt, sd ? sd.season : rnd(), OPPS, true);
   PLAY = { ...PLAY, i: 0, res, players, lt, paused: false };
   STAGE = 'season'; showView('season'); $('season').classList.remove('done'); $('seasonEnd').classList.add('hidden'); $('seasonCTA').classList.add('hidden'); $('statsBox').open = false;
   $('pauseBtn').textContent = 'Pause'; $('pauseBtn').disabled = false; $('season').querySelector('.ctrl').classList.remove('hidden');
@@ -644,8 +664,9 @@ const tName = t => t.me ? 'Your team' : t.label;
 function startPlayoffs() {
   stopPO();
   const { players, lt, res } = PLAY;
-  const table = E.standings(OPPS, res.w, Math.floor(Math.random() * 1e9));
-  const po = E.playoffs(players, lt, table, Math.floor(Math.random() * 1e9), true);
+  const sd = RUN && RUN.locked ? E.runSeeds(RUN.locked.sim) : null;
+  const table = E.standings(OPPS, res.w, sd ? sd.standings : Math.floor(Math.random() * 1e9));
+  const po = E.playoffs(players, lt, table, sd ? sd.playoffs : Math.floor(Math.random() * 1e9), true);
   const me = table.find(t => t.me); const events = [];
   po.rounds.forEach((rd, ri) => { rd.series.forEach((s, si) => { if (s.mine) s.games.forEach((g, gi) => events.push({ ri, si, gi })); }); events.push({ ri, end: true }); });
   PO = { po, table, me, events, i: 0, cur: 0, shown: {}, done: {}, speed: PO ? PO.speed : 220, timer: null };
@@ -752,22 +773,24 @@ const TIERS = [
   { id: 'perfect', name: 'Perfect', min: Infinity, color: '#12151B', note: '82–0 and 16–0.', title: true },
 ];
 function seasonScore() {
-  const res = PLAY.res, po = PO.po; const team = PLAY.lt.table[31].team;
-  const poW = po.myGames.filter(g => g.win).length, poL = po.myGames.length - poW;
-  const title = po.outcome === 'champion', perfectRS = res.w === 82, perfectPO = title && poL === 0;
-  const lines = [[`Regular season wins: ${res.w} × 10`, res.w * 10], [`Playoff wins: ${poW} × 25`, poW * 25]];
-  if (title) lines.push(['Won the title', 300]);
-  if (perfectRS) lines.push(['Perfect 82–0 season', 500]);
-  if (perfectPO) lines.push(['Perfect 16–0 playoffs', 300]);
-  const base = lines.reduce((s, l) => s + l[1], 0);
-  const mult = Math.max(.8, Math.min(1.3, 1 + (96 - team) * .02));
-  const total = Math.round(base * mult / 10) * 10;
+  const sc = E.scoreRun(PLAY.lt.table[31].team, PLAY.res.w, PO.po);
   let tier = TIERS[0];
-  if (perfectRS && perfectPO) tier = TIERS[5];
-  else for (const t of TIERS.slice(0, 5)) if (total >= t.min && (!t.title || title)) tier = t;
-  if (!title && tier.min >= 1400) tier = TIERS[2];
-  if (title && tier.min < 1400) tier = TIERS[3]; // winning the title is always at least Champion
-  return { lines, base, mult, team, total, tier };
+  if (sc.perfectRS && sc.perfectPO) tier = TIERS[5];
+  else for (const t of TIERS.slice(0, 5)) if (sc.total >= t.min && (!t.title || sc.title)) tier = t;
+  if (!sc.title && tier.min >= 1400) tier = TIERS[2];
+  if (sc.title && tier.min < 1400) tier = TIERS[3]; // winning the title is always at least Champion
+  return { ...sc, tier };
+}
+// what this season did for your rank (ranked) or what it could have done (guest)
+function rankedBox(sc) {
+  if (MODE !== 'classic') return '';
+  if (RUN && RUN.locked) {
+    const L = RUN.locked; const up = L.rank !== L.rankBefore;
+    ACC.refresh().then(() => drawMenu());
+    return `<div class="ctabox okbox" style="margin-top:12px"><div><b>${up ? `Promoted to ${esc(L.rank)}!` : `+${fmt(L.score)} on the leaderboard`}</b><div class="pmeta">Your total is now ${fmt(L.total)} · ${rankPill(L.total, true)} · #${fmt(L.position)} worldwide</div></div><button class="btn" id="seeBoard">Leaderboard</button></div>`;
+  }
+  if (!ACC.token) return `<div class="ctabox" style="margin-top:12px"><div><b>This season didn't count</b><div class="pmeta">Sign up and every Classic season adds to your rank on the global leaderboard.</div></div><button class="btn ball" id="seeSignup">Sign up</button></div>`;
+  return '';
 }
 function saveClassicRun() {
   const sc = PO.score; const res = PLAY.res; const lost = PO.po.myGames.filter(g => !g.win).length;
@@ -791,7 +814,9 @@ function drawScoreCard() {
       ${bestTxt ? `<div class="pmeta" style="margin-top:6px">${bestTxt}</div>` : ''}</div>
       <div class="ladder">${TIERS.slice().reverse().map(t => `<span class="${t.id === sc.tier.id ? 'on' : ''}" style="--c:${t.color}">${t.name}<small>${t.id === 'perfect' ? '98–0' : (t.min ? t.min.toLocaleString() + '+' : '') + (t.title ? ' · title' : '')}</small></span>`).join('')}</div></div>
     <div style="margin-top:10px;font-size:14px">${sc.lines.map(l => row(l[0], '+' + l[1])).join('')}${row(multTxt, '')}${row('Season score', sc.total.toLocaleString(), true)}</div>
-  </div>`;
+  </div>${rankedBox(sc)}`;
+  if ($('seeBoard')) $('seeBoard').onclick = () => drawHub('board');
+  if ($('seeSignup')) $('seeSignup').onclick = () => drawAuth('signup', () => drawHub('profile'));
 }
 
 // =================== phone draft: court first, roster in a slide-up sheet (modeled on 82-0) ===================
@@ -918,9 +943,116 @@ const API = {
   },
   async call(path, body) {
     if (!(await this.up())) return null;
-    try { const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' }); return await r.json(); } catch (e) { return null; }
+    const headers = { 'content-type': 'application/json' }; const tok = ACC.token; if (tok) headers.authorization = 'Bearer ' + tok;
+    try {
+      const r = await fetch(path, body ? { method: 'POST', headers, body: JSON.stringify(body) } : { cache: 'no-store', headers });
+      const j = await r.json(); if (r.status === 401 && tok && /^\/api\/(me|runs)/.test(path)) ACC.clear(); return j;
+    } catch (e) { return null; }
   },
 };
+
+// ---------- account: email + password; the server keeps season scores, ranks and the leaderboard ----------
+const ACC = {
+  get token() { return store.get('ball-token', null); },
+  get me() { return this.token ? store.get('ball-account', null) : null; },
+  save(token, me) {
+    if (token) store.set('ball-token', token);
+    if (me) { store.set('ball-account', me); store.set('ball-profile', { pid: me.pid, name: me.name, color: me.color }); }
+  },
+  clear() { store.set('ball-token', null); store.set('ball-account', null); },
+  async refresh() { if (!this.token) return null; const r = await API.call('/api/me'); if (r && r.ok) { this.save(null, r.me); return r; } return null; },
+};
+const rankPill = (total, small) => { const rk = rankFor(total || 0); return `<span class="rankpill${small ? ' sm' : ''}" style="--rc:${rk.color}">${rk.name}</span>`; };
+const fmt = n => (n || 0).toLocaleString();
+function rankCard(m) {
+  const rk = rankFor(m.total);
+  const bar = rk.next ? `<div class="rankbar" style="--rc:${rk.color}"><i style="width:${Math.round(rk.progress * 100)}%"></i></div><div class="pmeta">${fmt(rk.next.min - m.total)} more points to <b>${rk.next.name}</b></div>` : '<div class="pmeta">The top rank. Nothing left to climb.</div>';
+  return `<div class="rankcard" style="--rc:${rk.color}">${avatar(m, 56)}<div style="min-width:0;flex:1"><div class="rcname">${esc(m.name)}</div>
+    <div>${rankPill(m.total)}${m.position ? `<span class="pmeta"> #${fmt(m.position)} worldwide</span>` : '<span class="pmeta"> Not ranked yet</span>'}</div>${bar}</div></div>`;
+}
+function statGrid(m) {
+  const done = chHistory().filter(x => x.status === 'done'); const cw = done.filter(x => x.myWin).length;
+  const cell = (k, v) => `<div><small>${k}</small><b>${v}</b></div>`;
+  return `<div class="pstats3 six">${cell('Total score', fmt(m.total))}${cell('Seasons', fmt(m.runs))}${cell('Best season', m.best ? fmt(m.best) : '—')}${cell('Titles', fmt(m.titles))}${cell('82–0 seasons', fmt(m.perfect))}${cell('Challenges', done.length ? `${cw}–${done.length - cw}` : '—')}</div>`;
+}
+function runRows(runs) {
+  if (!runs || !runs.length) return '<div class="empty">No ranked seasons yet. Play Classic while logged in and they show up here.</div>';
+  return runs.map(r => { const five = r.team.map(byId).filter(Boolean);
+    const res = r.title ? (r.poL === 0 && r.w === 82 ? '98–0' : 'Champions') : r.poW + r.poL ? `${r.poW}–${r.poL} in the playoffs` : 'Missed the playoffs';
+    return `<details class="runx"><summary><span class="tierdot" style="background:${r.title ? '#E3A008' : 'var(--muted)'}"></span><span><b>${fmt(r.score)}</b> · ${r.w}–${82 - r.w}<small>${new Date(r.finished).toLocaleDateString()} · ${res}</small></span></summary>
+      <div class="runbody">${five.map(p => `<div class="chp"><span class="ovr ${ovrCls(p.ovr)}">${p.ovr}</span><span><b>${esc(p.name)}</b><small>${p.season} ${esc(E.teamName(p.team, p.decade))}</small></span></div>`).join('')}</div></details>`; }).join('');
+}
+
+// sign up / log in. `next` runs after success; guest=true also offers playing without an account (challenges only need a name)
+function drawAuth(kind, next, guest) {
+  const pr = getProfile() || {}; let color = pr.color || PCOLORS[0];
+  const signup = kind === 'signup';
+  chScreen(`<div class="chcard narrow"><div class="seg authtabs" role="tablist"><button data-k="signup" aria-pressed="${signup}">Sign up</button><button data-k="login" aria-pressed="${!signup}">Log in</button></div>
+    <h2 class="sec-h" style="margin-top:14px">${signup ? 'Create your account' : 'Welcome back'}</h2>
+    <p class="hint">${signup ? 'Your seasons add up to a rank and a spot on the global leaderboard, on any device.' : 'Log in to keep climbing the leaderboard.'}</p>
+    <form id="authForm" novalidate>
+    ${signup ? `<label class="flabel" for="auName">Name on the leaderboard</label><input id="auName" class="finput" maxlength="18" value="${esc(pr.name || '')}" placeholder="e.g. Alex" autocomplete="nickname">` : ''}
+    <label class="flabel" for="auEmail">Email</label><input id="auEmail" class="finput" type="email" autocomplete="email" placeholder="you@example.com">
+    <label class="flabel" for="auPass">Password</label><input id="auPass" class="finput" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" placeholder="${signup ? 'At least 8 characters' : ''}">
+    ${signup ? `<p class="pmeta" style="margin:6px 0 0">There's no password reset by email, so pick one you'll remember.</p><label class="flabel">Colour</label><div class="swatches">${PCOLORS.map(c => `<button type="button" class="sw ${c === color ? 'on' : ''}" data-c="${c}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</div>` : ''}
+    <p class="ferr" id="auErr" role="alert"></p>
+    <div class="cta-row"><button class="btn ball cta" id="auGo" type="submit">${signup ? 'Create account' : 'Log in'}</button><button class="btn" id="auBack" type="button">Back</button></div></form>
+    ${guest ? `<button class="linkbtn" id="auGuest">Play as a guest instead</button>` : ''}</div>`);
+  document.querySelectorAll('.authtabs button').forEach(b => b.onclick = () => drawAuth(b.dataset.k, next, guest));
+  document.querySelectorAll('.sw').forEach(b => b.onclick = () => { color = b.dataset.c; document.querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === b)); });
+  $('auBack').onclick = () => { drawMenu(); showView('intro'); };
+  if ($('auGuest')) $('auGuest').onclick = () => drawProfileForm(next);
+  $('authForm').onsubmit = async e => {
+    e.preventDefault(); const err = $('auErr'); err.textContent = '';
+    const body = { email: $('auEmail').value.trim(), password: $('auPass').value };
+    if (signup) Object.assign(body, { name: $('auName').value.trim(), color, pid: pr.pid });
+    $('auGo').disabled = true; $('auGo').textContent = signup ? 'Creating…' : 'Logging in…';
+    const r = await API.call(signup ? '/api/auth/signup' : '/api/auth/login', body);
+    if (!r || !r.ok) { err.textContent = r ? r.error : 'Couldn\'t reach the server. Check your connection.'; $('auGo').disabled = false; $('auGo').textContent = signup ? 'Create account' : 'Log in'; return; }
+    ACC.save(r.token, r.me); drawMenu(); syncAll(); toast(`<b>${signup ? 'Account created' : 'Logged in'}</b><span>${signup ? 'Your Classic seasons now count on the leaderboard.' : 'Welcome back, ' + esc(r.me.name) + '.'}</span>`);
+    next ? next() : drawHub('profile');
+  };
+  setTimeout(() => { const f = $(signup && !pr.name ? 'auName' : 'auEmail'); f && f.focus(); }, 50);
+}
+function drawAccountEdit() {
+  const m = ACC.me; let color = m.color;
+  chScreen(`<div class="chcard narrow"><h2 class="sec-h">Edit profile</h2>
+    <form id="edForm"><label class="flabel" for="edName">Name</label><input id="edName" class="finput" maxlength="18" value="${esc(m.name)}">
+    <label class="flabel">Colour</label><div class="swatches">${PCOLORS.map(c => `<button type="button" class="sw ${c === color ? 'on' : ''}" data-c="${c}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</div>
+    <p class="ferr" id="edErr" role="alert"></p><div class="cta-row"><button class="btn ball cta" type="submit">Save</button><button class="btn" type="button" id="edBack">Back</button></div></form>
+    <h3 class="sub-h" style="margin:22px 0 0">Change password</h3>
+    <form id="pwForm"><label class="flabel" for="pwCur">Current password</label><input id="pwCur" class="finput" type="password" autocomplete="current-password">
+    <label class="flabel" for="pwNew">New password</label><input id="pwNew" class="finput" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+    <p class="ferr" id="pwErr" role="alert"></p><div class="cta-row"><button class="btn" type="submit">Change password</button></div></form></div>`);
+  document.querySelectorAll('.sw').forEach(b => b.onclick = () => { color = b.dataset.c; document.querySelectorAll('.sw').forEach(x => x.classList.toggle('on', x === b)); });
+  $('edBack').onclick = () => drawHub('profile');
+  $('edForm').onsubmit = async e => { e.preventDefault(); const r = await API.call('/api/me', { name: $('edName').value.trim(), color });
+    if (!r || !r.ok) { $('edErr').textContent = r ? r.error : 'Couldn\'t reach the server.'; return; } ACC.save(null, r.me); drawMenu(); drawHub('profile'); };
+  $('pwForm').onsubmit = async e => { e.preventDefault(); const r = await API.call('/api/me/password', { current: $('pwCur').value, next: $('pwNew').value });
+    if (!r || !r.ok) { $('pwErr').textContent = r ? r.error : 'Couldn\'t reach the server.'; return; } ACC.save(r.token, null); toast('<b>Password changed</b><span>Other devices were logged out.</span>'); drawHub('profile'); };
+}
+async function drawLeaderboard(el) {
+  el.innerHTML = '<p class="hint">Loading the leaderboard…</p>';
+  const r = await API.call('/api/leaderboard');
+  if (!r || !r.ok) { el.innerHTML = '<div class="empty">Couldn\'t load the leaderboard. Check your connection.</div>'; return; }
+  const myName = ACC.me && ACC.me.name;
+  const row = x => `<button class="lbrow ${x.name === myName ? 'me' : ''}" data-name="${esc(x.name)}"><span class="lbpos num">${x.pos}</span>${avatar(x, 30)}<span class="lbname"><b>${esc(x.name)}</b><small>${rankPill(x.total, true)} ${fmt(x.runs)} season${x.runs === 1 ? '' : 's'}</small></span><span class="lbtot num">${fmt(x.total)}</span></button>`;
+  const meRow = r.me && !r.rows.some(x => x.name === r.me.name) ? `<div class="lbgap">…</div>${row({ pos: r.me.position, name: ACC.me.name, color: ACC.me.color, total: r.me.total, runs: ACC.me.runs })}` : '';
+  el.innerHTML = `<p class="pmeta" style="margin:0 0 10px">Every ranked Classic season adds its score to your total. Ranks: ${RANKS.map(k => k.name).join(' → ')}.</p>`
+    + (r.rows.length ? `<div class="lb">${r.rows.map(row).join('')}${meRow}</div>` : '<div class="empty">Nobody is on the board yet. Play a Classic season while logged in to be first.</div>')
+    + (ACC.me ? '' : '<div class="ctabox" style="margin-top:12px"><div><b>Want your name here?</b><div class="pmeta">Create a free account and your Classic seasons start counting.</div></div><button class="btn ball" id="lbJoin">Sign up</button></div>');
+  el.querySelectorAll('.lbrow').forEach(b => b.onclick = () => drawPublicProfile(b.dataset.name));
+  if ($('lbJoin')) $('lbJoin').onclick = () => drawAuth('signup', () => drawHub('board'));
+}
+async function drawPublicProfile(name) {
+  chScreen('<div class="chcard narrow center"><p class="hint">Loading…</p></div>');
+  const r = await API.call(`/api/users/${encodeURIComponent(name)}`);
+  if (!r || !r.ok) { chScreen(`<div class="chcard narrow"><h2 class="sec-h">Player not found</h2><button class="btn" id="ppBack">Back to the leaderboard</button></div>`); $('ppBack').onclick = () => drawHub('board'); return; }
+  const p = r.profile; const cell = (k, v) => `<div><small>${k}</small><b>${v}</b></div>`;
+  chScreen(`<div class="chcard narrow">${rankCard(p)}<div class="pstats3 six">${cell('Total score', fmt(p.total))}${cell('Seasons', fmt(p.runs))}${cell('Best season', p.best ? fmt(p.best) : '—')}${cell('Titles', fmt(p.titles))}${cell('82–0 seasons', fmt(p.perfect))}${cell('Joined', new Date(p.created).toLocaleDateString())}</div>
+    <h3 class="sub-h" style="margin:16px 0 8px">Recent seasons</h3>${runRows(r.runs)}<div class="cta-row"><button class="btn" id="ppBack">Back to the leaderboard</button></div></div>`);
+  $('ppBack').onclick = () => drawHub('board');
+}
 const sideOf = s => s && { pid: s.pid, name: s.name, color: s.color, team: s.team, tr: s.tr };
 function toast(html, onTap) {
   const t = $('toast'); t.innerHTML = html; t.classList.add('on'); t.onclick = () => { t.classList.remove('on'); onTap && onTap(); };
@@ -957,19 +1089,21 @@ function drawNav() {
   const pr = getProfile(); const news = chHistory().filter(x => x.unseen).length;
   $('navProf').innerHTML = (pr ? avatar(pr, 32) : '<span class="pav" style="background:var(--surface-2);width:32px;height:32px">?</span>') + (news ? `<span class="nbadge navdot">${news}</span>` : '') + `<span class="navname">${pr ? esc(pr.name) : 'Profile'}</span>`;
 }
-$('navProf').onclick = () => { stopPlay(); stopPO(); needProfile(() => { drawHub(chHistory().some(x => x.unseen) ? 'history' : 'profile'); syncAll(); }); };
+$('navProf').onclick = () => { stopPlay(); stopPO(); drawHub(chHistory().some(x => x.unseen) ? 'history' : 'profile'); syncAll(); };
+$('menuBoard').onclick = () => { drawHub('board'); };
 function drawMenu() {
   drawNav();
-  const pr = getProfile(); const h = chHistory(); const done = h.filter(x => x.status === 'done'); const won = done.filter(x => x.myWin).length;
-  if (!$('menuProfile')) return;
-  $('menuProfile').innerHTML = pr ? `${avatar(pr, 30)}<span><b>${esc(pr.name)}</b><small>${done.length ? `Challenges ${won}–${done.length - won}` : 'No challenges yet'}</small></span>` : `<span class="pav" style="background:var(--surface-2)">?</span><span><b>Set up your profile</b><small>Needed for challenges</small></span>`;
+  const pr = getProfile(); const m = ACC.me;
+  $('menuProfile').innerHTML = m ? `${avatar(m, 34)}<span><b>${esc(m.name)}</b><small>${rankPill(m.total, true)} ${fmt(m.total)} points${m.position ? ` · #${fmt(m.position)}` : ''}</small></span>`
+    : `${pr ? avatar(pr, 34) : '<span class="pav" style="background:var(--surface-2);width:34px;height:34px">?</span>'}<span><b>Log in or sign up</b><small>Get a rank and a spot on the leaderboard</small></span>`;
 }
+$('menuProfile').onclick = () => ACC.me ? drawHub('profile') : drawAuth('signup', () => { drawMenu(); showView('intro'); });
 $('modeClassic').onclick = () => { setMode('classic'); CH = null; resetDraft(); showView('draft'); };
 $('modeChallenge').onclick = () => needProfile(() => { CH = { id: uid(6), seed: Math.floor(Math.random() * 2 ** 31), role: 'create' }; setMode('challenge'); resetDraft(); showView('draft'); });
 document.querySelector('.brand').addEventListener('click', e => { e.preventDefault(); stopPlay(); stopPO(); stopCH(); drawMenu(); showView('intro'); });
 
 // ---------- profile ----------
-function needProfile(next) { if (getProfile()) next(); else drawProfileForm(next); }
+function needProfile(next) { if (getProfile()) next(); else drawAuth('signup', next, true); }
 function drawProfileForm(next) {
   const pr = getProfile() || { pid: uid(10), name: '', color: PCOLORS[0] };
   chScreen(`<div class="chcard narrow"><h2 class="sec-h">${getProfile() ? 'Your profile' : 'Pick a name'}</h2>
@@ -993,11 +1127,7 @@ function profileStats() {
 
 // ---------- seeded spins: both players get the same team and decade for each round and re-roll ----------
 const hseed = s => E.hashStr(String(s));
-function seededSpin(which, team, dec) {
-  const r = E.rng(hseed(`${CH.seed}:${S.rounds.length}:${which}`)); let tries = 0;
-  do { if (which !== 'era') team = E.TEAMS[Math.floor(r() * E.TEAMS.length)]; if (which !== 'team') dec = E.DECADES[Math.floor(r() * E.DECADES.length)]; tries++; } while (!eligible(team, dec) && tries < 500);
-  return { team, dec };
-}
+function seededSpin(which, team, dec) { return E.spinFor(CH.seed, S.rounds.length, which, team, dec, eligible); }
 
 // ---------- challenge-ready (after the draft) ----------
 const myIds = () => E.SLOTS.map(s => S.picks[s].id);
@@ -1202,8 +1332,9 @@ function drawSeries(rec, res, mine, animate) {
 
 // ---------- history, head-to-head, profile ----------
 function drawHub(tab) {
-  const h = chHistory(); const pr = getProfile();
-  const tabs = `<div class="seg chtabs" role="tablist">${[['profile', 'Profile'], ['classic', 'Classic'], ['history', 'Challenges'], ['h2h', '<span class="lg">Head to head</span><span class="sm">H2H</span>']].map(([k, l]) => `<button role="tab" data-tab="${k}" aria-pressed="${k === tab}">${l}</button>`).join('')}</div>`;
+  const h = chHistory(); const pr = getProfile() || { name: 'Guest', color: 'var(--surface-2)' }; const m = ACC.me;
+  if (tab === 'classic') tab = 'profile';
+  const tabs = `<div class="seg chtabs" role="tablist">${[['profile', 'Profile'], ['board', '<span class="lg">Leaderboard</span><span class="sm">Top 100</span>'], ['history', 'Challenges'], ['h2h', '<span class="lg">Head to head</span><span class="sm">H2H</span>']].map(([k, l]) => `<button role="tab" data-tab="${k}" aria-pressed="${k === tab}">${l}</button>`).join('')}</div>`;
   let body = '';
   if (tab === 'history') {
     body = (h.some(x => x.status !== 'done') ? PASTE_HTML : '') + (h.length ? h.map(x => { const opp = x.status === 'done' ? (x.mySide === 'a' ? x.b : x.a) : null;
@@ -1214,14 +1345,18 @@ function drawHub(tab) {
     const map = {}; h.filter(x => x.status === 'done').forEach(x => { const opp = x.mySide === 'a' ? x.b : x.a; const m = map[opp.pid] = map[opp.pid] || { opp, sw: 0, sl: 0, gw: 0, gl: 0, last: 0 }; m.opp = opp; x.myWin ? m.sw++ : m.sl++; m.gw += x.myGames; m.gl += x.oppGames; m.last = Math.max(m.last, x.played || 0); });
     const rows = Object.values(map).sort((x, y) => y.last - x.last);
     body = rows.length ? `<div class="h2h"><div class="h2hh"><span>Opponent</span><span>Series</span><span>Games</span></div>${rows.map(m => `<div class="h2hr">${avatar(m.opp, 28)}<b>${esc(m.opp.name)}</b><span class="num ${m.sw > m.sl ? 'upw' : m.sw < m.sl ? 'dnl' : ''}">${m.sw}–${m.sl}</span><span class="num">${m.gw}–${m.gl}</span></div>`).join('')}</div>` : '<div class="empty">Finish a challenge to start your head-to-head records.</div>';
-  } else if (tab === 'classic') {
-    const c = store.get('ball-classic', { runs: [], n: 0, total: 0, best: 0, titles: 0, perfect: 0, bestW: 0 });
-    body = `<div class="pstats3 six"><div><small>All-time score</small><b>${c.total.toLocaleString()}</b></div><div><small>Runs</small><b>${c.n}</b></div><div><small>Best score</small><b>${c.best ? c.best.toLocaleString() : '—'}</b></div><div><small>Average</small><b>${c.n ? Math.round(c.total / c.n).toLocaleString() : '—'}</b></div><div><small>Titles</small><b>${c.titles}</b></div><div><small>Best record</small><b>${c.n ? `${c.bestW}–${82 - c.bestW}` : '—'}</b></div></div>
-      <h3 class="sub-h" style="margin:16px 0 8px">Last ${Math.min(10, c.runs.length) || 10} runs</h3>` + (c.runs.length ? c.runs.map((r, i) => `<details class="runx"><summary><span class="tierdot" style="background:${r.color}"></span><span><b>${r.score.toLocaleString()}</b> · ${esc(r.tier)}<small>${new Date(r.at).toLocaleDateString()} · ${r.w}–${82 - r.w} · playoffs ${r.poW}–${r.poL}</small></span><span class="pmeta">Team ${r.team}</span></summary>
-        <div class="runbody"><p class="pmeta" style="margin:0 0 6px">${esc(r.result || '')}</p>${r.five.map(p => `<div class="chp"><span class="ovr ${ovrCls(p.ovr)}">${p.ovr}</span><span><b>${esc(p.name)}</b><small>${p.slot} · ${p.season} ${esc(p.team)}</small></span></div>`).join('')}</div></details>`).join('')
-        : '<div class="empty">Play a Classic run and it will show up here.</div>');
+  } else if (tab === 'board') {
+    body = '<div id="lbBox"></div>';
+  } else if (m) {
+    body = `${rankCard(m)}${statGrid(m)}<h3 class="sub-h" style="margin:16px 0 8px">Recent ranked seasons</h3><div id="myRuns"><p class="pmeta">Loading…</p></div>
+      <div class="cta-row"><button class="btn" id="hubEdit">Edit profile</button><button class="btn" id="hubOut">Log out</button></div>`;
   } else {
-    body = `<div class="chprof">${avatar(pr, 56)}<div style="min-width:0"><b style="font-size:20px">${esc(pr.name)}</b>${profileStats()}</div></div><div class="cta-row"><button class="btn" id="hubEdit">Edit name and colour</button><button class="btn" id="hubMenu">Back to menu</button></div>`;
+    const c = store.get('ball-classic', { runs: [], n: 0, total: 0, best: 0, titles: 0, perfect: 0, bestW: 0 });
+    body = `<div class="ctabox"><div><b>Play as a guest</b><div class="pmeta">Create a free account to get a rank, a spot on the global leaderboard, and your stats on any device.</div></div><div class="cta-row" style="margin:0"><button class="btn ball" id="hubSignup">Sign up</button><button class="btn" id="hubLogin">Log in</button></div></div>
+      ${getProfile() ? `<div class="chprof" style="margin-top:14px">${avatar(pr, 56)}<div style="min-width:0"><b style="font-size:20px">${esc(pr.name)}</b>${profileStats()}</div></div>` : ''}
+      <h3 class="sub-h" style="margin:16px 0 8px">Your last Classic runs on this device</h3>` + (c.runs.length ? c.runs.map((r, i) => `<details class="runx"><summary><span class="tierdot" style="background:${r.color}"></span><span><b>${r.score.toLocaleString()}</b> · ${esc(r.tier)}<small>${new Date(r.at).toLocaleDateString()} · ${r.w}–${82 - r.w}</small></span></summary>
+        <div class="runbody"><p class="pmeta" style="margin:0 0 6px">${esc(r.result || '')}</p>${r.five.map(p => `<div class="chp"><span class="ovr ${ovrCls(p.ovr)}">${p.ovr}</span><span><b>${esc(p.name)}</b><small>${p.slot} · ${p.season} ${esc(p.team)}</small></span></div>`).join('')}</div></details>`).join('')
+        : '<div class="empty">Play a Classic run and it will show up here.</div>') + (getProfile() ? `<div class="cta-row"><button class="btn" id="hubEdit">Edit name and colour</button></div>` : '');
   }
   chScreen(`<div class="chcard"><div class="chhub-h"><div class="hubwho">${avatar(pr, 36)}<h2 class="sec-h" style="margin:0">${esc(pr.name)}</h2></div><div class="hubact"><button class="btn" id="hubClassic">Play classic</button><button class="btn ball" id="hubNew">New challenge</button></div></div>${tabs}<div class="chlist">${body}</div></div>`);
   document.querySelectorAll('.chtabs [data-tab]').forEach(b => b.onclick = () => drawHub(b.dataset.tab));
@@ -1230,7 +1365,12 @@ function drawHub(tab) {
   $('hubNew').onclick = () => $('modeChallenge').click();
   $('hubClassic').onclick = () => $('modeClassic').click();
   if ($('hubMenu')) $('hubMenu').onclick = () => { drawMenu(); showView('intro'); };
-  if ($('hubEdit')) $('hubEdit').onclick = () => drawProfileForm(() => drawHub('profile'));
+  if ($('hubEdit')) $('hubEdit').onclick = () => m ? drawAccountEdit() : drawProfileForm(() => drawHub('profile'));
+  if ($('hubSignup')) $('hubSignup').onclick = () => drawAuth('signup', () => drawHub('profile'));
+  if ($('hubLogin')) $('hubLogin').onclick = () => drawAuth('login', () => drawHub('profile'));
+  if ($('hubOut')) $('hubOut').onclick = async () => { await API.call('/api/auth/logout', {}); ACC.clear(); drawMenu(); toast('<b>Logged out</b><span>Classic seasons won\'t count until you log in again.</span>'); drawHub('profile'); };
+  if (tab === 'board') drawLeaderboard($('lbBox'));
+  if (tab === 'profile' && m) ACC.refresh().then(r => { if (!r || !$('myRuns')) return; $('myRuns').innerHTML = runRows(r.runs); const rc = document.querySelector('.rankcard'); if (rc) rc.outerHTML = rankCard(r.me); });
 }
 function drawDetail(id) {
   const x = chHistory().find(r => r.id === id); if (!x) { drawHub('history'); return; }

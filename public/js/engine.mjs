@@ -256,5 +256,73 @@ export function createEngine(D) {
     return bits;
   }
   function netOnly(players){return rate(players.map(derive)).net;}
-  return { roles, isShooter, simGame, BASELINE, PER_POINT, teamName, standings, playoffs, titleOdds, netOnly, REPL, PERKS, avail, DECADES, TEAMS, SLOTS, roster, derive, rate, lineupTable, league, simSeason, monteCarlo, lossReason, Phi, SD, HOME, rng, hashStr };
+
+  // ---------- seeded runs: every random draw comes from a seed, so the server can replay a run exactly ----------
+  // one spin of the reels; which = 'both' | 'team' (re-roll the team) | 'era' (re-roll the decade)
+  function spinFor(seed, round, which, team, dec, eligible) {
+    const r = rng(hashStr(`${seed}:${round}:${which}`)); let tries = 0;
+    do { if (which !== 'era') team = TEAMS[Math.floor(r() * TEAMS.length)]; if (which !== 'team') dec = DECADES[Math.floor(r() * DECADES.length)]; tries++; } while (!eligible(team, dec) && tries < 500);
+    return { team, dec };
+  }
+  const samePlayer = (a, b) => a.id.split('-')[0] === b.id.split('-')[0];
+  // replay a ranked draft: rounds = [{ spins: ['both', 'team'?, 'era'?], pick: playerId, slot }]. Returns the five in slot order, or throws.
+  function replayDraft(seed, rounds) {
+    if (!Array.isArray(rounds) || rounds.length !== 5) throw new Error('need five rounds');
+    const picks = {}; const used = { team: 0, era: 0 };
+    const canTake = p => !Object.values(picks).some(q => samePlayer(q, p)) && p.pos.some(s => !picks[s]);
+    const eligible = (t, d) => roster(t.id, d.id).some(canTake);
+    rounds.forEach((rd, i) => {
+      const spins = rd && rd.spins;
+      if (!Array.isArray(spins) || spins[0] !== 'both' || spins.length > 3) throw new Error(`round ${i + 1}: bad spins`);
+      let team = null, dec = null;
+      spins.forEach((w, k) => {
+        if (k > 0) { if (w !== 'team' && w !== 'era') throw new Error(`round ${i + 1}: bad re-roll`); if (++used[w] > 1) throw new Error('too many re-rolls'); }
+        ({ team, dec } = spinFor(seed, i, w, team, dec, eligible));
+      });
+      const p = roster(team.id, dec.id).find(x => x.id === rd.pick);
+      if (!p || !SLOTS.includes(rd.slot) || picks[rd.slot] || !p.pos.includes(rd.slot) || !canTake(p)) throw new Error(`round ${i + 1}: bad pick`);
+      picks[rd.slot] = p;
+    });
+    return SLOTS.map(s => picks[s]);
+  }
+  function runSeeds(sim) { const h = k => hashStr(`${sim}:${k}`); return { league: h('league'), season: h('season'), standings: h('standings'), playoffs: h('playoffs') }; }
+  // season score: wins, playoff wins and bonuses, scaled by how strong the team was (weaker teams earn more)
+  function scoreRun(team, w, po) {
+    const poW = po.myGames.filter(g => g.win).length, poL = po.myGames.length - poW;
+    const title = po.outcome === 'champion', perfectRS = w === 82, perfectPO = title && poL === 0;
+    const lines = [[`Regular season wins: ${w} × 10`, w * 10], [`Playoff wins: ${poW} × 25`, poW * 25]];
+    if (title) lines.push(['Won the title', 300]);
+    if (perfectRS) lines.push(['Perfect 82–0 season', 500]);
+    if (perfectPO) lines.push(['Perfect 16–0 playoffs', 300]);
+    const base = lines.reduce((s, l) => s + l[1], 0);
+    const mult = Math.max(.8, Math.min(1.3, 1 + (96 - team) * .02));
+    return { lines, base, mult, team, total: Math.round(base * mult / 10) * 10, poW, poL, title, perfectRS, perfectPO };
+  }
+  // the whole season + playoffs for a locked team, exactly as the game shows it
+  function playRun(players, sim) {
+    const sd = runSeeds(sim); const opps = league(sd.league); const lt = lineupTable(players);
+    const res = simSeason(players, lt, sd.season, opps, true);
+    const table = standings(opps, res.w, sd.standings);
+    const po = playoffs(players, lt, table, sd.playoffs, true);
+    return { opps, lt, res, table, po, score: scoreRun(lt.table[31].team, res.w, po) };
+  }
+  return { spinFor, replayDraft, runSeeds, scoreRun, playRun, roles, isShooter, simGame, BASELINE, PER_POINT, teamName, standings, playoffs, titleOdds, netOnly, REPL, PERKS, avail, DECADES, TEAMS, SLOTS, roster, derive, rate, lineupTable, league, simSeason, monteCarlo, lossReason, Phi, SD, HOME, rng, hashStr };
+}
+
+// ---------- profile ranks: climb by adding up season scores ----------
+export const RANKS = [
+  { name: 'Rookie', min: 0, color: '#94A3B8' },
+  { name: 'Bench', min: 5000, color: '#64748B' },
+  { name: 'Rotation', min: 15000, color: '#0891B2' },
+  { name: 'Starter', min: 35000, color: '#2563EB' },
+  { name: 'All-Star', min: 75000, color: '#7C3AED' },
+  { name: 'All-NBA', min: 150000, color: '#DB2777' },
+  { name: 'MVP', min: 300000, color: '#E3A008' },
+  { name: 'Hall of Fame', min: 600000, color: '#FF5A1F' },
+  { name: 'GOAT', min: 1000000, color: '#E5383B' },
+];
+export function rankFor(total) {
+  let i = 0; while (i + 1 < RANKS.length && total >= RANKS[i + 1].min) i++;
+  const next = RANKS[i + 1] || null;
+  return { ...RANKS[i], index: i, next, progress: next ? (total - RANKS[i].min) / (next.min - RANKS[i].min) : 1 };
 }

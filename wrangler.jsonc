@@ -10,5 +10,8 @@
   },
   "kv_namespaces": [
     { "binding": "CHALLENGES", "id": "c12d52a76fd14c41881943efa8815f5b" }
+  ],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "ball", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
   ]
 }
