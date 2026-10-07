@@ -1024,7 +1024,7 @@ const ENGINE = (() => {
   const REPL = { r: 76, u: .17, shooter: false, big: false, perks: [], name: 'Bench player', repl: true, pts: 14, ast: 3.5, reb: 9, stl: 1.4, blk: .6, def: 3 };
   const WEIGHTS = [1.3, 1.1, 1.0, .9, .7]; // best player counts most, 5th-best least (they still add up to 5)
   const PER_POINT = 2.1;  // each team-rating point = 2.1 points of average game margin
-  const BASELINE = 84.5;  // a team rating of about 85 = an average NBA team
+  const BASELINE = 85.3;  // a team rating of about 85 = an average NBA team (tuned so whole-number chemistry keeps 82-0 odds unchanged)
   function rate(ds, open) {
     open = open || 0;
     const rs = ds.map(d => d.r).sort((a, b) => b - a);
@@ -1034,13 +1034,13 @@ const ENGINE = (() => {
     const shooters = real.filter(d => d.shooter).length;
     const shooting = shooters + open < 2 ? -3 : 0;
     const size = !real.some(d => d.big) && open === 0 ? -3 : 0;
-    // teammates: two players from the same franchise and decade already know each other (+2 per pair, max +4)
+    // teammates: two players from the same franchise and decade already know each other (+1 per pair, max +2)
     let pairs = 0; for (let i = 0; i < real.length; i++) for (let j = i + 1; j < real.length; j++) if (real[i].team === real[j].team && real[i].decade === real[j].decade) pairs++;
-    const mates = Math.min(3, pairs * 1.5);
+    const mates = Math.min(2, pairs);
     // bonuses for a good fit
     const spacingB = shooters >= 3 ? 1 : 0;                                            // three or more shooters
-    const passer = real.some(d => d.ast >= 8 || d.perks.includes('playmaker')) ? .5 : 0;         // someone who sets up teammates
-    const rimP = real.some(d => d.blk >= 2.8 || (d.big && d.perks.includes('defender'))) ? .5 : 0; // someone who protects the basket
+    const passer = real.some(d => d.ast >= 8 || d.perks.includes('playmaker')) ? 1 : 0;         // someone who sets up teammates
+    const rimP = real.some(d => d.blk >= 2.8 || (d.big && d.perks.includes('defender'))) ? 1 : 0; // someone who protects the basket
     const pk = perkEffects(real);
     const chem = ball + shooting + size + Math.min(4, mates + spacingB + passer + rimP); // bonuses cap at +4
     const team = players + chem + pk.total;
@@ -1303,8 +1303,8 @@ const chemChip = p => { if (!S.spin || havePid(p)) return ''; const c = chemDelt
 const ROLE_INFO = {
   shooter: ['Shooter', 'Counts toward the shooting check: two are needed, three earn the spacing bonus.'],
   big: ['Big man', 'Rebounds or blocks shots. Every team needs one.'],
-  passer: ['Passer', 'Sets up teammates. Having a passer gives +½ chemistry.'],
-  rim: ['Rim protector', 'Protects the basket. Having a rim protector gives +½ chemistry.'],
+  passer: ['Passer', 'Sets up teammates. Having a passer gives +1 chemistry.'],
+  rim: ['Rim protector', 'Protects the basket. Having a rim protector gives +1 chemistry.'],
   bd: ['Ball-dominant', 'Uses 27%+ of his team\'s plays. Three or more of them cost 3 chemistry.'],
 };
 const injTag = p => (!p.perks.includes('iron') && p.gp <= 62) ? `<span class="role inj" tabindex="0" role="button" data-tip="<b>Injury-prone</b><br>Played only ${p.gp} of 82 games that season, so he misses about that many in the sim. A bench player covers for him.">Injury-prone</span>` : '';
@@ -1312,7 +1312,7 @@ const roleTags = p => injTag(p) + (() => { const r = E.roles(p); return Object.k
 const BD_TIP = '<b>Ball-dominant scorer</b><br>Uses 27%+ of his team\'s plays. Three or more of them cost 3 chemistry.';
 const bdTag = p => p.usg >= 27 ? `<span class="bd" tabindex="0" role="button" data-tip="${BD_TIP}">Ball-dominant</span>` : '';
 const mateOf = p => Object.values(S.picks).find(q => q.team === p.team && q.decade === p.decade && pid(q) !== pid(p));
-const mateTag = p => { const m = mateOf(p); return m ? `<span class="perk team" title="Played with ${m.name}: +1.5 chemistry">Teammate +1.5</span>` : ''; };
+const mateTag = p => { const m = mateOf(p); return m ? `<span class="perk team" title="Played with ${m.name}: +1 chemistry">Teammate +1</span>` : ''; };
 const canTake = p => !havePid(p) && p.pos.some(s => !S.picks[s]);
 
 // ---------- team numbers ----------
@@ -1352,7 +1352,7 @@ function chemText(rt) {
   if (P.ball < 0) iss.push('three or more ball-dominant scorers (−3)');
   if (P.shooting < 0) iss.push('fewer than two Shooters (−3)');
   if (P.size < 0) iss.push('no big man (−3)');
-  const pos = []; if (P.spacingB) pos.push('spacing +1'); if (P.passer) pos.push('passer +½'); if (P.rimP) pos.push('rim protector +½'); if (P.mates) pos.push(`teammates +${halfs(P.mates)}`);
+  const pos = []; if (P.spacingB) pos.push('spacing +1'); if (P.passer) pos.push('passer +1'); if (P.rimP) pos.push('rim protector +1'); if (P.mates) pos.push(`teammates +${halfs(P.mates)}`);
   return (iss.length ? 'Chemistry issues: ' + iss.join(', ') + '.' : 'No chemistry issues.') + (pos.length ? ` Chemistry bonuses: ${pos.join(', ')}.` : '');
 }
 // one row per chemistry rule: what you have, and exactly what it does to the rating
@@ -1369,13 +1369,13 @@ function chemNote(rt) {
     : row('ok', 'Big man', nB > 1 ? `${nB}` : '', '±0', '<b>Big man</b><br>Covered. Without one you would lose 3 chemistry.');
   const bd = P.ball < 0 ? row('bad', 'Ball-dominant', `${nD}, max 2`, '−3', '<b>Ball-dominant scorers</b><br>Three or more fight over the ball: −3 chemistry.')
     : row('ok', 'Ball-dominant', `${nD} of max 2`, '±0', '<b>Ball-dominant scorers</b><br>Up to two is fine. A third costs 3 chemistry.');
-  const pass = nP ? row('good', 'Passer', '', '+½', '<b>Passer</b><br>Someone who sets up teammates: +½ chemistry.')
-    : row('open', 'Passer', 'none yet', '+½', '<b>Passer</b><br>Add a player tagged Passer for +½ chemistry.');
-  const rim = nR ? row('good', 'Rim protector', '', '+½', '<b>Rim protector</b><br>Someone who protects the basket: +½ chemistry.')
-    : row('open', 'Rim protector', 'none yet', '+½', '<b>Rim protector</b><br>Add a player tagged Rim protector for +½ chemistry.');
-  const pairs = Math.round(P.mates / 1.5);
-  const mates = P.mates ? row('good', 'Teammates', `${pairs} pair${pairs > 1 ? 's' : ''}`, '+' + halfs(P.mates), '<b>Teammates</b><br>Players from the same team and decade: +1½ per pair (max +3).')
-    : row('open', 'Teammates', 'same team + decade', '+1½', '<b>Teammates</b><br>Two players from the same team and decade: +1½ per pair (max +3).');
+  const pass = nP ? row('good', 'Passer', '', '+1', '<b>Passer</b><br>Someone who sets up teammates: +1 chemistry.')
+    : row('open', 'Passer', 'none yet', '+1', '<b>Passer</b><br>Add a player tagged Passer for +1 chemistry.');
+  const rim = nR ? row('good', 'Rim protector', '', '+1', '<b>Rim protector</b><br>Someone who protects the basket: +1 chemistry.')
+    : row('open', 'Rim protector', 'none yet', '+1', '<b>Rim protector</b><br>Add a player tagged Rim protector for +1 chemistry.');
+  const pairs = P.mates;
+  const mates = P.mates ? row('good', 'Teammates', `${pairs} pair${pairs > 1 ? 's' : ''}`, '+' + halfs(P.mates), '<b>Teammates</b><br>Players from the same team and decade: +1 per pair (max +2).')
+    : row('open', 'Teammates', 'same team + decade', '+1', '<b>Teammates</b><br>Two players from the same team and decade: +1 per pair (max +2).');
   return `<div class="chemlist">${shoot}${big}${bd}${pass}${rim}${mates}</div>`;
 }
 function drawTeamScore() {
@@ -1387,11 +1387,11 @@ function drawTeamScore() {
 function drawTeamScore0() {
   const n = nPicked();
   if (!n) {
-    $('teamscore').innerHTML = `<div class="ovr-big" style="color:var(--muted)">—</div><div><div class="ts-k">Team rating</div><div class="pmeta">Grows with every pick. About 85 is an average NBA team. Around 97 or higher is perfect-season territory.</div></div>`;
+    $('teamscore').innerHTML = `<div class="ovr-big" style="color:var(--muted)">—</div><div><div class="ts-k">Team rating</div><div class="pmeta">Grows with every pick. About 85 is an average NBA team. Around 98 or higher is perfect-season territory.</div></div>`;
     $('courtHint').textContent = ''; return;
   }
   const t = teamNumbers(); const w = Math.round(t.wins);
-  const col = t.rating >= 97 ? '#E3A008' : t.rating >= 92 ? 'var(--win)' : t.rating >= 85 ? 'var(--ink)' : 'var(--muted)';
+  const col = t.rating >= 98 ? '#E3A008' : t.rating >= 93 ? 'var(--win)' : t.rating >= 85 ? 'var(--ink)' : 'var(--muted)';
   $('teamscore').innerHTML = `<div class="ovr-big" style="color:${col}">${rtg(t.rating)}</div>
     <div><div class="ts-k" style="margin-bottom:6px">Team rating</div><div class="ts-rows">
       <span><span class="ts-k">Projected record</span><b>${w}–${82 - w}</b></span>
@@ -1580,7 +1580,7 @@ function suggestion() {
   if (scorers >= 2 && open.length) return 'Tip: you have two ball-dominant scorers. A third costs 3 points, so a role player or defender may fit better.';
   if (!ds.some(d => d.big) && open.length <= 2 && (open.includes('C') || open.includes('PF'))) return 'Tip: you still need a big man (a center or power forward who rebounds or blocks), or you lose 3 points.';
   if (shooters < 2 && open.length <= 3) return `Tip: you have ${shooters} shooter${shooters === 1 ? '' : 's'}. You need two, or you lose 3 points. Look for the Shooter tag.`;
-  return Math.random() < .5 ? 'Tip: perks add a little (up to +4 in total), but a better player usually adds more.' : 'Tip: two players from the same team and decade earn a Teammates +1½ bonus. Re-rolls can help you find one.';
+  return Math.random() < .5 ? 'Tip: perks add a little (up to +4 in total), but a better player usually adds more.' : 'Tip: two players from the same team and decade earn a Teammates +1 bonus. Re-rolls can help you find one.';
 }
 function refresh() {
   const full = draftDone(), rnd = Math.min(5, S.rounds.length + 1);
@@ -1661,7 +1661,7 @@ document.addEventListener('keydown', e => {
   if (VIEW !== 'draft') return; e.preventDefault(); spin('both');
 });
 $('hideStats').onchange = e => document.body.classList.toggle('hide-stats', e.target.checked);
-const RATING_HELP = `<p style="margin:8px 0 6px"><b>Player rating</b> comes from one box-score formula (<b>1.5 × points + rebounds + 1.2 × assists + 2.5 × steals + 2.5 × blocks − 0.6 × missed shots</b>, adjusted for pace), then ranked against every regular that season. The scale follows NBA 2K: the league's best player is about 97, a top-10 player about 94, each team's best player about 88, a solid starter about 80. 99 is reserved for a league-best season by a wide margin. A season needs 1,500 minutes to count.</p><p style="margin:0 0 6px"><b>Colours:</b> <span class="ovr t-red">97+</span> <span class="ovr t-yel">93</span> <span class="ovr t-pur">90</span> <span class="ovr t-blu">86</span> <span class="ovr t-grn">82</span> <span class="ovr t-gry">81−</span> &nbsp;red is the very best, then yellow, purple, blue, green and grey. A gold ★ marks an All-Star.</p><p style="margin:0 0 6px"><b>Team rating</b> = your five (best player counts most) + chemistry + perks. Talent matters most: chemistry bonuses and perks are each capped at +4.</p><p style="margin:0 0 6px"><b>Roles</b> (grey tags) are what a player brings to chemistry: Shooter, Big man, Passer, Rim protector, Ball-dominant.</p><p style="margin:0 0 6px"><b>Chemistry.</b> Penalties: three or more Ball-dominant players (−3), fewer than two Shooters (−3), no Big man (−3). Bonuses (up to +4 together): three or more Shooters (+1), a Passer (+½), a Rim protector (+½), teammates from the same franchise and decade (+1.5 per pair).</p><p class="pmeta" style="margin:0">About 85 is an average NBA team. Around 97 or higher can go 82–0.</p>`;
+const RATING_HELP = `<p style="margin:8px 0 6px"><b>Player rating</b> comes from one box-score formula (<b>1.5 × points + rebounds + 1.2 × assists + 2.5 × steals + 2.5 × blocks − 0.6 × missed shots</b>, adjusted for pace), then ranked against every regular that season. The scale follows NBA 2K: the league's best player is about 97, a top-10 player about 94, each team's best player about 88, a solid starter about 80. 99 is reserved for a league-best season by a wide margin. A season needs 1,500 minutes to count.</p><p style="margin:0 0 6px"><b>Colours:</b> <span class="ovr t-red">97+</span> <span class="ovr t-yel">93</span> <span class="ovr t-pur">90</span> <span class="ovr t-blu">86</span> <span class="ovr t-grn">82</span> <span class="ovr t-gry">81−</span> &nbsp;red is the very best, then yellow, purple, blue, green and grey. A gold ★ marks an All-Star.</p><p style="margin:0 0 6px"><b>Team rating</b> = your five (best player counts most) + chemistry + perks. Talent matters most: chemistry bonuses and perks are each capped at +4.</p><p style="margin:0 0 6px"><b>Roles</b> (grey tags) are what a player brings to chemistry: Shooter, Big man, Passer, Rim protector, Ball-dominant.</p><p style="margin:0 0 6px"><b>Chemistry.</b> Penalties: three or more Ball-dominant players (−3), fewer than two Shooters (−3), no Big man (−3). Bonuses (up to +4 together): three or more Shooters (+1), a Passer (+1), a Rim protector (+1), teammates from the same franchise and decade (+1 per pair, max +2).</p><p class="pmeta" style="margin:0">About 85 is an average NBA team. Around 98 or higher can go 82–0.</p>`;
 const CATS = [['team', 'Team'], ['offense', 'Offense'], ['defense', 'Defense and size'], ['moment', 'Big moments'], ['health', 'Health']];
 $('ratingHelp').innerHTML = RATING_HELP;
 $('guide').innerHTML = '<p class="pmeta" style="margin:0">Perks come from each player\'s real career and stats. Each player has at most one: his biggest. The number on a perk is what it adds to your team rating.</p>' + CATS.map(([c, label]) => `<div><h5>${label}</h5><div class="row">${Object.entries(E.PERKS).filter(([, P]) => P.cat === c).map(([k, P]) => `<span>${perkPill(k)}</span><span>${P.desc}</span>`).join('')}</div></div>`).join('');
@@ -2001,7 +2001,7 @@ function seasonScore() {
   if (perfectRS) lines.push(['Perfect 82–0 season', 500]);
   if (perfectPO) lines.push(['Perfect 16–0 playoffs', 300]);
   const base = lines.reduce((s, l) => s + l[1], 0);
-  const mult = Math.max(.8, Math.min(1.3, 1 + (95 - team) * .02));
+  const mult = Math.max(.8, Math.min(1.3, 1 + (96 - team) * .02));
   const total = Math.round(base * mult / 10) * 10;
   let tier = TIERS[0];
   if (perfectRS && perfectPO) tier = TIERS[5];
