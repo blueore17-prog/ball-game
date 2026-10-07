@@ -735,7 +735,7 @@ body:not([data-view="draft"]) .pips{display:none}
 .h2hh{grid-template-columns:minmax(0,1fr) 70px 70px;font-size:12px;color:var(--muted);font-weight:700;padding:0 12px}
 .h2hr{background:var(--surface-2);border-radius:12px;padding:8px 12px}.h2hr span{text-align:right;font-weight:800}
 .chprof{display:flex;gap:14px;align-items:flex-start}.chprof>div{flex:1}
-body[data-view="challenge"] .stepper,body[data-view="intro"] .stepper,body[data-mode="challenge"] .stepper,body[data-mode="challenge"] #preset,body[data-mode="challenge"] #redraftReady{display:none}
+body[data-view="challenge"] .stepper,body[data-view="intro"] .stepper,body[data-mode="challenge"] .stepper,body[data-mode="challenge"] #redraftReady{display:none}
 
 /* role tags (what a player brings to chemistry) — neutral, so perks stay the colourful ones */
 .role{display:inline-block;font-size:11px;font-weight:700;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 6px;margin:3px 4px 0 0;line-height:1.6;white-space:nowrap}
@@ -855,13 +855,6 @@ body[data-view="challenge"] .stepper,body[data-view="intro"] .stepper,body[data-
         <details class="guide"><summary>More options</summary>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
             <label class="toggle"><input type="checkbox" id="hideStats"> Hide stats</label>
-            <select class="btn" id="preset" aria-label="Fill the team instantly">
-              <option value="">Fill my team instantly…</option>
-              <option value="bulls">1990s Bulls core</option>
-              <option value="best">Best possible five</option>
-              <option value="scorers">Five big scorers</option>
-              <option value="random">Random picks</option>
-            </select>
             <button class="btn" id="reset">Start over</button>
           </div>
         </details>
@@ -1587,7 +1580,7 @@ function suggestion() {
   if (scorers >= 2 && open.length) return 'Tip: you have two ball-dominant scorers. A third costs 3 points, so a role player or defender may fit better.';
   if (!ds.some(d => d.big) && open.length <= 2 && (open.includes('C') || open.includes('PF'))) return 'Tip: you still need a big man (a center or power forward who rebounds or blocks), or you lose 3 points.';
   if (shooters < 2 && open.length <= 3) return `Tip: you have ${shooters} shooter${shooters === 1 ? '' : 's'}. You need two, or you lose 3 points. Look for the Shooter tag.`;
-  return Math.random() < .5 ? 'Tip: perks add a little (up to +4 in total), but a better player usually adds more.' : 'Tip: two players from the same team and decade earn a Teammates +2 bonus. Re-rolls can help you find one.';
+  return Math.random() < .5 ? 'Tip: perks add a little (up to +4 in total), but a better player usually adds more.' : 'Tip: two players from the same team and decade earn a Teammates +1½ bonus. Re-rolls can help you find one.';
 }
 function refresh() {
   const full = draftDone(), rnd = Math.min(5, S.rounds.length + 1);
@@ -1673,24 +1666,9 @@ const CATS = [['team', 'Team'], ['offense', 'Offense'], ['defense', 'Defense and
 $('ratingHelp').innerHTML = RATING_HELP;
 $('guide').innerHTML = '<p class="pmeta" style="margin:0">Perks come from each player\'s real career and stats. Each player has at most one: his biggest. The number on a perk is what it adds to your team rating.</p>' + CATS.map(([c, label]) => `<div><h5>${label}</h5><div class="row">${Object.entries(E.PERKS).filter(([, P]) => P.cat === c).map(([k, P]) => `<span>${perkPill(k)}</span><span>${P.desc}</span>`).join('')}</div></div>`).join('');
 function resetDraft() { stopPlay(); stopPO(); S = fresh(); S.started = true; STAGE = 'draft'; setReels(null, null); refresh(); }
-$('reset').onclick = () => { $('preset').value = ''; resetDraft(); };
-function playAgain() { $('preset').value = ''; resetDraft(); showView('draft'); }
+$('reset').onclick = () => resetDraft();
+function playAgain() { resetDraft(); showView('draft'); }
 $('againBtn').onclick = playAgain;
-
-// ---------- instant fill ----------
-function presets(kind) {
-  const bySlot = s => POOL.filter(p => p.pos.includes(s));
-  if (kind === 'bulls') { const ro = E.roster('CHI', '1990s').slice().sort((x, y) => y.ovr - x.ovr); const o = {}, used = new Set(); ['C', 'PG', 'PF', 'SG', 'SF'].forEach(s => { const p = ro.find(x => x.pos.includes(s) && !used.has(pid(x))) || ro.find(x => !used.has(pid(x))); o[s] = p; used.add(pid(p)); }); return o; }
-  if (kind === 'scorers') { const used = new Set(), o = {}; E.SLOTS.forEach(s => { const c = bySlot(s).filter(p => !used.has(pid(p))).sort((a, b) => (b.usg * 2 + b.pts / (b.pace / 94)) - (a.usg * 2 + a.pts / (a.pace / 94)))[0]; o[s] = c; used.add(pid(c)); }); return o; }
-  if (kind === 'random') { const o = {}; while (Object.keys(o).length < 5) { const t = randOf(E.TEAMS), d = randOf(E.DECADES); const c = E.roster(t.id, d.id).filter(p => p.pos.some(s => !o[s]) && !Object.values(o).some(q => pid(q) === pid(p))); if (!c.length) continue; const p = randOf(c); o[p.pos.find(s => !o[s])] = p; } return o; }
-  const r = E.rng(7); const u = new Set(); let L = E.SLOTS.map(s => { const p = bySlot(s).find(x => !u.has(pid(x))); u.add(pid(p)); return p; }); let bn = E.netOnly(L);
-  for (let i = 0; i < 25000; i++) { const k = Math.floor(r() * 5); const c = bySlot(E.SLOTS[k]); const p = c[Math.floor(r() * c.length)]; const T = L.slice(); T[k] = p; if (new Set(T.map(pid)).size < 5) continue; const n = E.netOnly(T); if (n > bn) { bn = n; L = T; } }
-  const o = {}; E.SLOTS.forEach((s, i) => o[s] = L[i]); return o;
-}
-$('preset').onchange = e => {
-  if (!e.target.value) return; const v = e.target.value; resetDraft(); S.picks = presets(v); S.skips = { team: 0, era: 0 };
-  S.rounds = E.SLOTS.map(s => ({ team: S.picks[s].team, dec: S.picks[s].decade, pickId: S.picks[s].id, slot: s })); refresh();
-};
 
 // ---------- season ----------
 let PLAY = { timer: null, speed: 45, i: 0, res: null, paused: false };
@@ -2158,8 +2136,8 @@ const upsert = rec => { const h = chHistory().filter(x => x.id !== rec.id); h.un
 const esc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const b64e = o => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const b64d = s => { try { s = s.replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(escape(atob(s)))); } catch (e) { return null; } };
-// links always point at the public site, so they work even when shared from a preview
-const SITE = /netlify\.app$/.test(location.hostname) ? location.origin + location.pathname : 'https://ball-game-4pqq.netlify.app/';
+// links point at whatever site the game is running on
+const SITE = location.origin + '/';
 const linkFor = (kind, o) => `${SITE}#${kind}=${b64e(o)}`;
 const byId = id => POOL.find(p => p.id === id);
 const avatar = (p, size) => `<span class="pav" style="background:${p.color || '#FF5A1F'};width:${size || 34}px;height:${size || 34}px;font-size:${(size || 34) * .42}px">${esc((p.name || '?')[0]).toUpperCase()}</span>`;
@@ -2170,7 +2148,7 @@ function chScreen(html) { stopCH(); $('chBody').innerHTML = html; showView('chal
 function stopCH() { if (CHT) clearTimeout(CHT); CHT = null; }
 
 
-// ---------- online sync (works when the site runs with its Netlify Function; otherwise links still work) ----------
+// ---------- online sync (works when the site runs with its /api server; otherwise links still work) ----------
 const API = {
   ok: null,
   async up() {
