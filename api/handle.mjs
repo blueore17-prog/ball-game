@@ -1,6 +1,5 @@
 // ball. challenges API: a tiny shared store so both players see results automatically.
-// Runs as a Netlify Function; data lives in Netlify Blobs (both included in the free plan).
-import { getStore } from "@netlify/blobs";
+// Host-neutral: the host passes in a store with get / setJSON / set / list (Netlify Blobs shape).
 
 const ID = /^[a-z0-9]{4,12}$/;
 const PID = /^[a-z0-9]{6,16}$/;
@@ -69,6 +68,3 @@ export async function handle(req, store) {
     return json({ error: "server error" }, 500);
   }
 }
-
-export default async (req) => handle(req, getStore({ name: "ball-challenges", consistency: "strong" }));
-export const config = { path: "/api/*" };

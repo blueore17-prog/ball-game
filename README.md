@@ -2,12 +2,15 @@
 
 Files:
 - index.html: the whole game
-- netlify/functions/api.mjs: the challenge API (saves challenges and results in Netlify Blobs)
-- netlify.toml: tells Netlify where the site and the function are
-- package.json: lists the one library the function needs (@netlify/blobs)
+- api/handle.mjs: the challenge API logic (saves challenges and results), shared by both hosts
+- functions/api/[[path]].js: Cloudflare Pages entry point (data in Workers KV)
+- netlify/functions/api.mjs + netlify.toml + package.json: the older Netlify setup (data in Netlify Blobs)
 
-Deploy with GitHub (once), then every push updates the site:
-1. Create a new GitHub repository and upload these files, keeping the folders.
-2. In Netlify, open the project, go to Project configuration > Build & deploy > Link repository, and pick the repo.
-3. Leave the build settings as they are (netlify.toml sets them) and deploy.
-4. Check https://<your-site>.netlify.app/api/ping shows {"ok":true}.
+## Cloudflare Pages (current host)
+1. Cloudflare dashboard > Workers & Pages > Create > Pages > Connect to Git, pick this repo.
+2. Build settings: framework preset None, build command empty, build output directory `/`.
+3. Storage & Databases > KV > create a namespace, e.g. `ball-challenges`.
+4. In the Pages project: Settings > Bindings > Add > KV namespace, variable name `CHALLENGES`, pick the namespace. Redeploy.
+5. Check https://<project>.pages.dev/api/ping shows {"ok":true}.
+
+Every push to main then deploys automatically.
