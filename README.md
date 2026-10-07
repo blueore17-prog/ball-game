@@ -2,7 +2,7 @@
 
 Draft five NBA players from any era, play an 82-game season and the playoffs, and climb the global leaderboard. Or challenge a friend to a best-of-seven from the same spins.
 
-Live: https://ball-game.pavelbaran21.workers.dev
+Live: https://ball-game.balldot.workers.dev
 
 ## Layout
 
