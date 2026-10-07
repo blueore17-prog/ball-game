@@ -1,0 +1,14 @@
+// Cloudflare Worker config: serves the game from this folder and runs worker.mjs for /api/*
+{
+  "name": "ball-game",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "kv_namespaces": [
+    { "binding": "CHALLENGES", "id": "c12d52a76fd14c41881943efa8815f5b" }
+  ]
+}

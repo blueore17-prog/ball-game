@@ -1,6 +1,6 @@
-// Cloudflare Pages entry point for the challenges API (/api/*); data lives in Workers KV.
-// Needs a KV namespace bound to this Pages project as CHALLENGES.
-import { handle } from "../../api/handle.mjs";
+// Cloudflare Worker: serves the game files and the challenges API (/api/*).
+// Challenge data lives in Workers KV, bound as CHALLENGES in wrangler.jsonc.
+import { handle } from "./api/handle.mjs";
 
 // wrap KV in the small Netlify Blobs-style interface handle() expects
 const kvStore = kv => ({
@@ -14,6 +14,9 @@ const kvStore = kv => ({
   },
 });
 
-export const onRequest = ({ request, env }) => env.CHALLENGES
-  ? handle(request, kvStore(env.CHALLENGES))
-  : new Response(JSON.stringify({ error: "storage not set up" }), { status: 500, headers: { "content-type": "application/json" } });
+export default {
+  fetch(request, env) {
+    if (new URL(request.url).pathname.startsWith("/api/")) return handle(request, kvStore(env.CHALLENGES));
+    return env.ASSETS.fetch(request);
+  },
+};
