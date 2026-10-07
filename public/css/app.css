@@ -774,3 +774,8 @@ body[data-view="challenge"] .stepper,body[data-view="intro"] .stepper,body[data-
 .ferr{color:var(--loss);font-size:13.5px;min-height:18px;margin:10px 0 0}
 .linkbtn{background:none;border:0;color:var(--muted);text-decoration:underline;font:inherit;font-size:14px;margin:14px auto 0;display:block;cursor:pointer}
 .authtabs{display:flex}.authtabs button{flex:1}
+/* in-game guide */
+.howbox{font-size:13.5px;line-height:1.45}.howbox h5{margin:14px 0 6px;font-size:13px}.howbox .pmeta{margin:6px 0 0}
+.howto{margin:8px 0 0;padding-left:20px;display:grid;gap:6px}
+.howgrid{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-items:baseline}
+.howgrid .up,.howgrid .dn{font-weight:800;font-variant-numeric:tabular-nums;text-align:right}.howgrid .up{color:var(--win)}.howgrid .dn{color:var(--loss)}

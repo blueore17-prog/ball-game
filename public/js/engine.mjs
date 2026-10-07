@@ -11,14 +11,14 @@ export function createEngine(D) {
   const TEAMS = D.teams;
   const SLOTS = ['PG', 'SG', 'SF', 'PF', 'C'];
   const PERKS = {
-    leader: { name: 'Leader', tag: 'Leader +1.5', cat: 'team', desc: 'Won an MVP or led a title team. +1.5 team rating. Only one Leader counts.' },
-    specialist: { name: 'Specialist', tag: 'Specialist +1', cat: 'team', desc: 'Played short minutes but was great in them. +1 team rating. Only one counts.' },
-    defender: { name: 'Defender', tag: 'Defender +1', cat: 'defense', desc: 'All-Defensive level stopper. +1 team rating. Up to two count.' },
-    shooter: { name: 'Sniper', tag: 'Sniper +½', cat: 'offense', desc: 'An elite long-range shooter. +½ team rating (up to two count). Snipers always count as Shooters.' },
-    rebounder: { name: 'Rebounder', tag: 'Rebounder +½', cat: 'defense', desc: 'Owns the glass. +½ team rating, and counts as your big man.' },
-    scorer: { name: 'Scorer', tag: 'Scorer +½', cat: 'offense', desc: 'Pours in points (24+ per 36 minutes). +½ team rating. Up to two count.' },
-    playmaker: { name: 'Playmaker', tag: 'Playmaker +½', cat: 'offense', desc: 'Racks up assists. +½ team rating. Only one counts.' },
-    clutch: { name: 'Clutch', tag: 'Clutch', cat: 'moment', desc: 'Sometimes steals a game you were about to lose by 4 or fewer.' },
+    leader: { name: 'Leader', tag: 'Leader +1.5', cat: 'team', desc: 'Won an MVP or led a title team. Only one counts.' },
+    specialist: { name: 'Specialist', tag: 'Specialist +1', cat: 'team', desc: 'Great in short minutes. Only one counts.' },
+    defender: { name: 'Defender', tag: 'Defender +1', cat: 'defense', desc: 'All-Defensive level stopper. Up to two count.' },
+    shooter: { name: 'Sniper', tag: 'Sniper +½', cat: 'offense', desc: 'Elite long-range shooter. Always counts as a Shooter. Up to two count.' },
+    rebounder: { name: 'Rebounder', tag: 'Rebounder +½', cat: 'defense', desc: 'Owns the glass. Counts as your big man.' },
+    scorer: { name: 'Scorer', tag: 'Scorer +½', cat: 'offense', desc: '24+ points per 36 minutes. Up to two count.' },
+    playmaker: { name: 'Playmaker', tag: 'Playmaker +½', cat: 'offense', desc: 'Piles up assists. Only one counts.' },
+    clutch: { name: 'Clutch', tag: 'Clutch', cat: 'moment', desc: 'Sometimes wins a game you were about to lose by 4 or fewer.' },
     iron: { name: 'Iron man', tag: 'Iron man', cat: 'health', desc: 'Almost never misses a game.' },
   };
   const ARCH_LABEL = { floor: 'Floor general', scorer: 'Scorer', shooter: 'Spot-up shooter', threeD: 'Defensive guard', twoWay: 'Two-way forward', pointFwd: 'Point forward', stretch: 'Stretch big', rim: 'Rim protector', post: 'Post scorer' };

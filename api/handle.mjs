@@ -1,5 +1,5 @@
 // ball. challenges API: a tiny shared store so both players see results automatically.
-// Host-neutral: the host passes in a store with get / setJSON / set / list (Netlify Blobs shape).
+// The host passes in a store with get / setJSON / set / list (worker.mjs wraps Workers KV).
 
 const ID = /^[a-z0-9]{4,12}$/;
 const PID = /^[a-z0-9]{6,16}$/;

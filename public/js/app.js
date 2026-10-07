@@ -423,10 +423,22 @@ document.addEventListener('keydown', e => {
   if (VIEW !== 'draft') return; e.preventDefault(); spin('both');
 });
 $('hideStats').onchange = e => document.body.classList.toggle('hide-stats', e.target.checked);
-const RATING_HELP = `<p style="margin:8px 0 6px"><b>Player rating</b> comes from one box-score formula (<b>1.5 × points + rebounds + 1.2 × assists + 2.5 × steals + 2.5 × blocks − 0.6 × missed shots</b>, adjusted for pace), then ranked against every regular that season. The scale follows NBA 2K: the league's best player is about 97, a top-10 player about 94, each team's best player about 88, a solid starter about 80. 99 is reserved for a league-best season by a wide margin. A season needs 1,500 minutes to count.</p><p style="margin:0 0 6px"><b>Colours:</b> <span class="ovr t-red">97+</span> <span class="ovr t-yel">93</span> <span class="ovr t-pur">90</span> <span class="ovr t-blu">86</span> <span class="ovr t-grn">82</span> <span class="ovr t-gry">81−</span> &nbsp;red is the very best, then yellow, purple, blue, green and grey. A gold ★ marks an All-Star.</p><p style="margin:0 0 6px"><b>Team rating</b> = your five (best player counts most) + chemistry + perks. Talent matters most: chemistry bonuses and perks are each capped at +4.</p><p style="margin:0 0 6px"><b>Roles</b> (grey tags) are what a player brings to chemistry: Shooter, Big man, Passer, Rim protector, Ball-dominant.</p><p style="margin:0 0 6px"><b>Chemistry.</b> Penalties: three or more Ball-dominant players (−3), fewer than two Shooters (−3), no Big man (−3). Bonuses (up to +4 together): three or more Shooters (+1), a Passer (+1), a Rim protector (+1), teammates from the same franchise and decade (+1 per pair, max +2).</p><p class="pmeta" style="margin:0">About 85 is an average NBA team. Around 98 or higher can go 82–0.</p>`;
-const CATS = [['team', 'Team'], ['offense', 'Offense'], ['defense', 'Defense and size'], ['moment', 'Big moments'], ['health', 'Health']];
-$('ratingHelp').innerHTML = RATING_HELP;
-$('guide').innerHTML = '<p class="pmeta" style="margin:0">Perks come from each player\'s real career and stats. Each player has at most one: his biggest. The number on a perk is what it adds to your team rating.</p>' + CATS.map(([c, label]) => `<div><h5>${label}</h5><div class="row">${Object.entries(E.PERKS).filter(([, P]) => P.cat === c).map(([k, P]) => `<span>${perkPill(k)}</span><span>${P.desc}</span>`).join('')}</div></div>`).join('');
+// the in-game guide: short, scannable, one idea per line
+const HOW_IT_WORKS = `<ol class="howto">
+  <li><b>Draft.</b> Spin a team and a decade, then pick one player. Five rounds. You get one team re-roll and one decade re-roll.</li>
+  <li><b>Team rating</b> = your five players + chemistry + perks. Talent matters most. About 85 is an average NBA team; around 98 can go 82–0.</li>
+  <li><b>Play</b> 82 games and the playoffs, then get a season score.</li>
+</ol>
+<h5>Chemistry</h5>
+<div class="howgrid"><span class="up">+1</span><span>a Passer</span><span class="up">+1</span><span>a Rim protector</span><span class="up">+1</span><span>3 or more Shooters</span><span class="up">+1</span><span>each pair from the same team and decade (max +2)</span>
+<span class="dn">−3</span><span>fewer than 2 Shooters</span><span class="dn">−3</span><span>no Big man</span><span class="dn">−3</span><span>3 or more Ball-dominant scorers</span></div>
+<p class="pmeta">Grey tags on a player show the roles he fills. Your team panel shows each rule live.</p>
+<h5>Season score</h5>
+<p class="pmeta">10 per win, 25 per playoff win, +300 for the title, +500 for 82–0, +300 for 16–0. Weaker teams earn up to ×1.3, superteams as little as ×0.8. Logged in, every season adds to your total and your rank.</p>
+<h5>Player ratings</h5>
+<p class="pmeta">Built from that season's box score on a 2K-style scale: <span class="ovr t-red">97+</span> <span class="ovr t-yel">93</span> <span class="ovr t-pur">90</span> <span class="ovr t-blu">86</span> <span class="ovr t-grn">82</span> <span class="ovr t-gry">81−</span>. A gold ★ marks an All-Star.</p>`;
+$('ratingHelp').innerHTML = HOW_IT_WORKS;
+$('guide').innerHTML = '<p class="pmeta" style="margin:0">Each player has at most one perk, from his real career. The number is what it adds to your team rating (perks add up to +4 in total).</p><div class="row">' + Object.keys(E.PERKS).map(k => `<span>${perkPill(k)}</span><span>${E.PERKS[k].desc}</span>`).join('') + '</div>';
 // ranked run: logged-in Classic drafts use spins from the server's seed; the server plays the season when the team is locked
 let RUN = null;
 function newRun() {
@@ -1100,7 +1112,7 @@ async function drawPublicProfile(name) {
   const r = await API.call(`/api/users/${encodeURIComponent(name)}`);
   if (!r || !r.ok) { chScreen(`<div class="chcard narrow"><h2 class="sec-h">Player not found</h2><button class="btn" id="ppBack">Back to the leaderboard</button></div>`); $('ppBack').onclick = () => drawHub('board'); return; }
   const p = r.profile; const cell = (k, v) => `<div><small>${k}</small><b>${v}</b></div>`;
-  chScreen(`<div class="chcard narrow">${rankCard(p)}<div class="pstats3 six">${cell('Total score', fmt(p.total))}${cell('Seasons', fmt(p.runs))}${cell('Best season', p.best ? fmt(p.best) : '—')}${cell('Titles', fmt(p.titles))}${cell('82–0 seasons', fmt(p.perfect))}${cell('Joined', new Date(p.created).toLocaleDateString())}</div>
+  chScreen(`<div class="chcard narrow">${rankCard(p)}<div class="pstats3 six">${cell('Total score', fmt(p.total))}${cell('Seasons', fmt(p.runs))}${cell('Best season', p.best ? fmt(p.best) : '—')}${cell('Titles', fmt(p.titles))}${cell('82–0 seasons', fmt(p.perfect))}${cell('Joined', new Date(p.created).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }))}</div>
     <h3 class="sub-h" style="margin:16px 0 8px">Recent seasons</h3>${runRows(r.runs)}<div class="cta-row"><button class="btn" id="ppBack">Back to the leaderboard</button></div></div>`);
   $('ppBack').onclick = () => drawHub('board');
 }
