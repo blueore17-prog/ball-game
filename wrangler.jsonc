@@ -12,6 +12,6 @@
     { "binding": "CHALLENGES", "id": "c12d52a76fd14c41881943efa8815f5b" }
   ],
   "d1_databases": [
-    { "binding": "DB", "database_name": "ball", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "ball", "database_id": "c5dbf9a6-e0af-4b42-afcc-0957da372ab3", "migrations_dir": "migrations" }
   ]
 }
