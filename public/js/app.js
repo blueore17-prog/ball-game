@@ -763,6 +763,56 @@ document.querySelectorAll('#poSeg button').forEach(b => b.onclick = () => {
 });
 
 
+
+// ---------- shareable results card: a 1080×1350 image of the season, shared as a file or downloaded ----------
+async function resultCardBlob() {
+  const sc = PO.score, res = PLAY.res, me = ACC.me;
+  const W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
+  await document.fonts.load('800 64px Unbounded'); await document.fonts.load('700 40px "DM Sans"');
+  const disp = (w, px) => `${w} ${px}px Unbounded, sans-serif`, body = (w, px) => `${w} ${px}px "DM Sans", sans-serif`;
+  const tc = sc.tier.color === '#12151B' ? '#F2F4F7' : sc.tier.color;
+  g.fillStyle = '#0B0D11'; g.fillRect(0, 0, W, H);
+  const grd = g.createRadialGradient(W * .85, 80, 40, W * .85, 80, 900); grd.addColorStop(0, tc + '55'); grd.addColorStop(1, '#0B0D1100'); g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  // wordmark
+  g.fillStyle = '#F2F4F7'; g.font = disp(800, 64); g.textBaseline = 'alphabetic'; g.fillText('ball', 72, 128);
+  const bw = g.measureText('ball').width; g.fillStyle = '#FF5A1F'; g.beginPath(); g.arc(72 + bw + 20, 116, 12, 0, 7); g.fill();
+  g.fillStyle = '#99A1B0'; g.font = body(700, 28); g.textAlign = 'right'; g.fillText('CLASSIC SEASON', W - 72, 122); g.textAlign = 'left';
+  // headline + record
+  g.fillStyle = tc; g.font = disp(700, 56); g.fillText(PO.headline || sc.tier.name, 72, 260);
+  g.fillStyle = '#F2F4F7'; g.font = disp(800, 190); g.fillText(`${res.w}–${82 - res.w}`, 64, 460);
+  // numbers row
+  const stat = (x, k, v) => { g.fillStyle = '#99A1B0'; g.font = body(600, 28); g.fillText(k, x, 540); g.fillStyle = '#F2F4F7'; g.font = disp(700, 46); g.fillText(v, x, 596); };
+  stat(72, 'Season score', sc.total.toLocaleString()); stat(430, 'Tier', sc.tier.name); stat(790, 'Team rating', rtg(sc.team));
+  // the five
+  let y = 650;
+  E.SLOTS.forEach(slot => {
+    const p = S.picks[slot]; const t = teamOf(p.team);
+    g.fillStyle = '#14171D'; g.beginPath(); g.roundRect(56, y, W - 112, 104, 26); g.fill();
+    g.fillStyle = t.c1; g.beginPath(); g.arc(122, y + 52, 34, 0, 7); g.fill();
+    g.fillStyle = '#fff'; g.font = disp(700, 24); g.textAlign = 'center'; g.fillText(ini(p.name), 122, y + 61); g.textAlign = 'left';
+    g.fillStyle = '#F2F4F7'; g.font = body(700, 36); g.fillText(p.name, 180, y + 48);
+    g.fillStyle = '#99A1B0'; g.font = body(500, 26); g.fillText(`${slot} · ${p.season} ${E.teamName(p.team, p.decade)}`, 180, y + 84);
+    g.fillStyle = ovrCol(p.ovr); g.beginPath(); g.roundRect(W - 172, y + 30, 88, 46, 12); g.fill();
+    g.fillStyle = '#fff'; g.font = disp(700, 26); g.textAlign = 'center'; g.fillText(String(p.ovr), W - 128, y + 63); g.textAlign = 'left';
+    y += 118;
+  });
+  // footer: who played it + where
+  g.fillStyle = '#99A1B0'; g.font = body(600, 28);
+  if (me) { const rk = rankFor(me.total); g.fillStyle = rk.color; g.beginPath(); g.arc(84, H - 74, 12, 0, 7); g.fill(); g.fillStyle = '#F2F4F7'; g.font = body(700, 30); g.fillText(`${me.name} · ${rk.name}`, 108, H - 64); }
+  g.fillStyle = '#99A1B0'; g.font = body(600, 28); g.textAlign = 'right'; g.fillText(location.host, W - 72, H - 64); g.textAlign = 'left';
+  return new Promise(r => cv.toBlob(r, 'image/png'));
+}
+async function shareResult(btn) {
+  const old = btn.textContent; btn.disabled = true; btn.textContent = 'Making the image…';
+  try {
+    const blob = await resultCardBlob(); const file = new File([blob], `ball-${PLAY.res.w}-${82 - PLAY.res.w}.png`, { type: 'image/png' });
+    const me = ACC.me; const url = me ? `${location.origin}/?p=${encodeURIComponent(me.name)}` : location.origin + '/';
+    const text = `I went ${PLAY.res.w}–${82 - PLAY.res.w}${PO.po.outcome === 'champion' ? ' and won the title' : ''} in ball. Season score ${PO.score.total.toLocaleString()}. Can you beat it?`;
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], text, url }); } catch (e) { /* closed the share sheet */ } }
+    else { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); toast('<b>Image saved</b><span>Post it anywhere. The link to the game is on the card.</span>'); }
+  } finally { btn.disabled = false; btn.textContent = old; }
+}
+
 // ---------- season score + tiers ----------
 const TIERS = [
   { id: 'lottery', name: 'Lottery', min: 0, color: '#94A3B8', note: 'Missed the playoffs or went out early.' },
@@ -816,6 +866,7 @@ function drawScoreCard() {
     <div style="margin-top:10px;font-size:14px">${sc.lines.map(l => row(l[0], '+' + l[1])).join('')}${row(multTxt, '')}${row('Season score', sc.total.toLocaleString(), true)}</div>
   </div>${rankedBox(sc)}`;
   if ($('seeBoard')) $('seeBoard').onclick = () => drawHub('board');
+  $('shareBtn').onclick = () => shareResult($('shareBtn'));
   if ($('seeSignup')) $('seeSignup').onclick = () => drawAuth('signup', () => drawHub('profile'));
 }
 
@@ -1182,6 +1233,8 @@ function drawSend(rec) {
 
 // ---------- opening links ----------
 function openFromHash() {
+  const pname = new URLSearchParams(location.search).get('p');
+  if (pname) { try { window.history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ } drawPublicProfile(pname.slice(0, 18)); return true; }
   const sid = new URLSearchParams(location.search).get('c');
   if (sid && /^[a-z0-9]{4,12}$/.test(sid)) {
     try { window.history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
