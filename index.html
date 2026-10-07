@@ -745,6 +745,16 @@ body[data-view="challenge"] .stepper,body[data-view="intro"] .stepper,body[data-
 .havechips{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
 .havechips span{font-size:11.5px;font-weight:700;border:1px solid var(--line);border-radius:99px;padding:1px 8px;color:var(--muted)}
 .havechips .ok{color:#4ADE80;border-color:rgba(74,222,128,.35)}.havechips .bad{color:#FF7A7A;border-color:rgba(255,122,122,.4)}
+/* chemistry checklist: one row per rule, with its exact effect */
+.chemlist{display:grid;gap:2px;margin-top:10px;font-size:12.5px;line-height:1.3}
+.crow{display:grid;grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:8px;padding:4px 8px;border-radius:8px}
+.crow .ci{width:16px;height:16px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800;line-height:1;box-sizing:border-box}
+.crow .cl{min-width:0;font-weight:700}.crow .cd{color:var(--muted);font-weight:500;font-size:11.5px;margin-left:6px}
+.crow .cv{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:12px}
+.crow.good .ci{background:color-mix(in srgb,var(--win) 22%,transparent);color:var(--win)}.crow.good .cv{color:var(--win)}
+.crow.bad{background:color-mix(in srgb,var(--loss) 12%,transparent)}.crow.bad .ci{background:var(--loss);color:#fff}.crow.bad .cv{color:var(--loss)}
+.crow.ok .ci{border:1.5px solid var(--line);color:var(--muted)}.crow.ok .cv{color:var(--muted);font-weight:600}
+.crow.open .ci{border:1.5px dashed color-mix(in srgb,var(--muted) 60%,transparent)}.crow.open .cl{color:var(--muted);font-weight:600}.crow.open .cv{color:var(--muted);font-weight:600;opacity:.8}
 /* phone performance: no blur, light shadows */
 .msheet{will-change:transform}
 .asb{color:#E3A008;font-size:14px;margin-left:2px;cursor:help}
@@ -1281,6 +1291,7 @@ const draftDone = () => nPicked() === 5;
 const openSlots = () => E.SLOTS.filter(s => !S.picks[s]);
 const havePid = p => Object.values(S.picks).some(q => pid(q) === pid(p));
 const halfs = x => String(x).replace(/^0\.5$/, '½').replace(/\.5$/, '½');
+const chemFmt = x => { const v = Math.round(x * 2) / 2; return (v > 0 ? '+' : v < 0 ? '−' : '±') + halfs(Math.abs(v)); };
 function chemDelta(p) {
   const picked = Object.values(S.picks); const open = openSlots().length;
   const b = E.rate(picked.map(E.derive), open).parts, a = E.rate(picked.concat(p).map(E.derive), Math.max(0, open - 1)).parts;
@@ -1343,22 +1354,42 @@ function teamNumbers0() {
   const pl = lineupArr(); const lt = tableFor(pl); const full = lt.table[31]; const pr = projection(pl, lt);
   return { rating: full.team, talent: full.players, chem: full.chem, perks: full.perks, wins: pr.wins, p82: pr.p82, full };
 }
-function chemNote(rt) {
+function chemText(rt) {
   const P = rt.parts; const iss = [];
   if (P.ball < 0) iss.push('three or more ball-dominant scorers (−3)');
   if (P.shooting < 0) iss.push('fewer than two Shooters (−3)');
   if (P.size < 0) iss.push('no big man (−3)');
-  const pos = []; if (P.spacingB) pos.push('spacing +1'); if (P.passer) pos.push('passer +½'); if (P.rimP) pos.push('rim protector +½'); if (P.mates) pos.push(`teammates +${P.mates}`);
-  const good = pos.length ? ` Chemistry bonuses: ${pos.join(', ')}.` : '';
-  const picked = Object.values(S.picks); const rr = picked.map(E.roles); const nS = rr.filter(x => x.shooter).length, nB = rr.filter(x => x.big).length, nP = rr.filter(x => x.passer).length, nR = rr.filter(x => x.rim).length, nD = rr.filter(x => x.bd).length;
-  const have = picked.length ? `<div class="havechips"><span class="${nS >= 2 ? 'ok' : ''}">Shooters ${nS}</span><span class="${nB ? 'ok' : ''}">Big man ${nB ? '✓' : '–'}</span><span class="${nD >= 3 ? 'bad' : ''}">Ball-dominant ${nD}</span><span class="${nP ? 'ok' : ''}">Passer ${nP ? '✓' : '–'}</span><span class="${nR ? 'ok' : ''}">Rim protector ${nR ? '✓' : '–'}</span></div>` : '';
-  return have + `<div class="pmeta" style="margin-top:8px">${iss.length ? 'Chemistry issues: ' + iss.join(', ') + '.' : 'No chemistry issues so far.'}${good}</div>`;
+  const pos = []; if (P.spacingB) pos.push('spacing +1'); if (P.passer) pos.push('passer +½'); if (P.rimP) pos.push('rim protector +½'); if (P.mates) pos.push(`teammates +${halfs(P.mates)}`);
+  return (iss.length ? 'Chemistry issues: ' + iss.join(', ') + '.' : 'No chemistry issues.') + (pos.length ? ` Chemistry bonuses: ${pos.join(', ')}.` : '');
+}
+// one row per chemistry rule: what you have, and exactly what it does to the rating
+function chemNote(rt) {
+  const P = rt.parts; const picked = Object.values(S.picks); if (!picked.length) return '';
+  const rr = picked.map(E.roles); const cnt = k => rr.filter(x => x[k]).length;
+  const nS = cnt('shooter'), nB = cnt('big'), nP = cnt('passer'), nR = cnt('rim'), nD = cnt('bd');
+  const ICON = { good: '✓', bad: '!', ok: '✓', open: '' };
+  const row = (state, label, detail, val, tip) => `<div class="crow ${state}" tabindex="0" role="button" data-tip="${tip}"><span class="ci">${ICON[state]}</span><span class="cl">${label}${detail ? `<span class="cd">${detail}</span>` : ''}</span><span class="cv">${val}</span></div>`;
+  const shoot = P.shooting < 0 ? row('bad', 'Shooters', `${nS} of 2 needed`, '−3', '<b>Shooters</b><br>Fewer than two costs 3 chemistry. Three or more earn +1 spacing.')
+    : P.spacingB ? row('good', 'Shooters', `${nS}, spacing`, '+1', '<b>Shooters</b><br>Three or more: +1 spacing bonus.')
+    : row('ok', 'Shooters', `${nS}, a 3rd adds +1`, '±0', '<b>Shooters</b><br>You have the two you need. A third earns +1 spacing.');
+  const big = P.size < 0 ? row('bad', 'Big man', 'need one', '−3', '<b>Big man</b><br>A team with no big man loses 3 chemistry.')
+    : row('ok', 'Big man', nB > 1 ? `${nB}` : '', '±0', '<b>Big man</b><br>Covered. Without one you would lose 3 chemistry.');
+  const bd = P.ball < 0 ? row('bad', 'Ball-dominant', `${nD}, max 2`, '−3', '<b>Ball-dominant scorers</b><br>Three or more fight over the ball: −3 chemistry.')
+    : row('ok', 'Ball-dominant', `${nD} of max 2`, '±0', '<b>Ball-dominant scorers</b><br>Up to two is fine. A third costs 3 chemistry.');
+  const pass = nP ? row('good', 'Passer', '', '+½', '<b>Passer</b><br>Someone who sets up teammates: +½ chemistry.')
+    : row('open', 'Passer', 'none yet', '+½', '<b>Passer</b><br>Add a player tagged Passer for +½ chemistry.');
+  const rim = nR ? row('good', 'Rim protector', '', '+½', '<b>Rim protector</b><br>Someone who protects the basket: +½ chemistry.')
+    : row('open', 'Rim protector', 'none yet', '+½', '<b>Rim protector</b><br>Add a player tagged Rim protector for +½ chemistry.');
+  const pairs = Math.round(P.mates / 1.5);
+  const mates = P.mates ? row('good', 'Teammates', `${pairs} pair${pairs > 1 ? 's' : ''}`, '+' + halfs(P.mates), '<b>Teammates</b><br>Players from the same team and decade: +1½ per pair (max +3).')
+    : row('open', 'Teammates', 'same team + decade', '+1½', '<b>Teammates</b><br>Two players from the same team and decade: +1½ per pair (max +3).');
+  return `<div class="chemlist">${shoot}${big}${bd}${pass}${rim}${mates}</div>`;
 }
 function drawTeamScore() {
   drawTeamScore0();
   if (!nPicked()) { $('miniScore').innerHTML = '<span class="pmeta">Your court fills up as you pick. Each spin gives you one new player.</span>'; return; }
   const t = teamNumbers(); const w = Math.round(t.wins);
-  $('miniScore').innerHTML = `<div class="minis"><span><small>Team rating</small><b>${rtg(t.rating)}</b></span><span><small>Projected</small><b>${w}–${82 - w}</b></span><span><small>Chemistry</small><b>${signed(t.chem)}</b></span><span><small>Perks</small><b>${signed(t.perks)}</b></span></div>${chemNote(t.full)}`;
+  $('miniScore').innerHTML = `<div class="minis"><span><small>Team rating</small><b>${rtg(t.rating)}</b></span><span><small>Projected</small><b>${w}–${82 - w}</b></span><span><small>Chemistry</small><b>${chemFmt(t.chem)}</b></span><span><small>Perks</small><b>${signed(t.perks)}</b></span></div>${chemNote(t.full)}`;
 }
 function drawTeamScore0() {
   const n = nPicked();
@@ -1373,7 +1404,7 @@ function drawTeamScore0() {
       <span><span class="ts-k">Projected record</span><b>${w}–${82 - w}</b></span>
       <span><span class="ts-k">Perfect season</span><b>${chanceWords(t.p82)}</b></span>
       <span><span class="ts-k">Your five</span><b>${rtg(t.talent)}</b></span>
-      <span><span class="ts-k">Chemistry</span><b>${signed(t.chem)} · ${chemWords(t.chem)}</b></span>
+      <span><span class="ts-k">Chemistry</span><b>${chemFmt(t.chem)} · ${chemWords(t.chem)}</b></span>
       <span><span class="ts-k">Perks</span><b>${signed(t.perks)}</b></span>
     </div>${chemNote(t.full)}</div>`;
   $('courtHint').textContent = `${n} of 5 picked`;
@@ -1602,7 +1633,7 @@ function refresh() {
     $('stageTitle').textContent = 'Your team is ready';
     $('stageSub').textContent = '';
     $('readyBox').innerHTML = `<div class="readycard"><div><div class="pmeta">Team rating</div><div class="ovr-big">${rtg(t.rating)}</div></div>
-      <div style="flex:1;min-width:180px"><div><b>Projected record ${w}–${82 - w}</b></div><div class="pmeta">Perfect season: ${chanceWords(t.p82)}. ${chemNote(t.full).replace(/<[^>]+>/g, '')}</div></div></div>
+      <div style="flex:1;min-width:180px"><div><b>Projected record ${w}–${82 - w}</b></div><div class="pmeta">Perfect season: ${chanceWords(t.p82)}. ${chemText(t.full)}</div></div></div>
       <button class="btn ball cta" id="playBtn2" style="width:100%;margin-top:14px">Play the season</button><button class="btn mobile-only" id="seeTeam" style="width:100%;margin-top:8px">See your team on the court</button><button class="btn" id="redraftReady" style="width:100%;margin-top:8px">Not happy? Start a new draft</button>`;
     $('redraftReady').onclick = playAgain;
     $('seeTeam').onclick = openSheet;
