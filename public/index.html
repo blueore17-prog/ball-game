@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ball.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="shell">
+<nav class="nav" aria-label="Main">
+  <div class="nav-in">
+    <a class="brand" href="#top" aria-label="ball. home">ball<span class="dot"></span></a>
+    <ol class="stepper" id="stepper" aria-label="Game progress">
+      <li data-v="draft">Draft</li><li data-v="season">Season</li><li data-v="playoffs">Playoffs</li><li data-v="score">Score</li>
+    </ol>
+    <div class="navr"><div class="pips" id="pips" aria-label="Draft progress"></div><button class="navav" id="navProf" aria-label="Your profile"></button></div>
+  </div>
+</nav>
+<main class="scroller" id="scroller"><div class="wrap" id="top">
+
+  <section class="intro" id="intro" aria-labelledby="h-intro">
+    <h1 id="h-intro">ball<span class="dot" aria-hidden="true"></span></h1>
+    <p class="lead">Build a team of five real NBA players from any era, then prove it on the court.</p>
+    <div class="modes">
+      <button class="modecard" id="modeClassic"><span class="mtag">Classic</span><b>Chase 82–0</b><span class="pmeta">Draft five players, play 82 games and the playoffs, and earn a season score.</span><span class="mgo">Play classic →</span></button>
+      <button class="modecard ch" id="modeChallenge"><span class="mtag">Challenge</span><b>Beat a friend</b><span class="pmeta">Draft, send a link, and your friend drafts from the same spins. A best-of-seven decides it.</span><span class="mgo">Start a challenge →</span></button>
+    </div>
+  </section>
+
+  <div class="mdraft" id="mdraft">
+    <div class="mtop">
+      <div class="mround"><span id="mRoundTxt">Round 1 / 5</span><div class="mdash" id="mDash"></div></div>
+      <button class="mrating" id="mRating" aria-label="Team rating and details"></button>
+    </div>
+    <div class="mreels">
+      <div class="mreel team"><div class="mlab"><label>Team</label><button class="mre" id="mSkipTeam" aria-label="New team"></button></div><div class="reel"><div class="strip" id="mReelTeam"></div></div></div>
+      <div class="mreel era"><div class="mlab"><label>Decade</label><button class="mre" id="mSkipEra" aria-label="New decade"></button></div><div class="reel"><div class="strip" id="mReelDec"></div></div></div>
+    </div>
+    <div class="mcourt">
+      <div id="mPlacing" class="mplacing hidden"></div>
+      <svg id="mCourt" viewBox="0 0 500 420" role="img" aria-label="Your lineup on the court"></svg>
+    </div>
+    <div class="mbottom" id="mBottom"></div>
+    <section class="msheet" id="mSheet" data-state="closed" aria-label="Players to pick from">
+      <button class="msheet-handle" id="mSheetHandle"><span id="mSheetTitle"></span><span class="pmeta" id="mSheetHint"></span></button>
+      <div class="mfilters">
+        <div class="chips" id="mGroups" role="group" aria-label="Filter by position">
+          <button class="chip" data-g="all" aria-pressed="true">All</button><button class="chip" data-g="G" aria-pressed="false">G</button><button class="chip" data-g="F" aria-pressed="false">F</button><button class="chip" data-g="C" aria-pressed="false">C</button>
+        </div>
+        <select id="mSort" aria-label="Sort players"><option value="ovr">Rating</option><option value="pts">Points</option><option value="reb">Rebounds</option><option value="ast">Assists</option><option value="def">Defense</option></select>
+      </div>
+      <div class="mlist" id="mList"></div>
+    </section>
+  </div>
+  <div class="draft2 hidden" id="game">
+    <section class="panel stage" id="draftPanel" aria-labelledby="stageTitle">
+      <button class="mstrip" id="mstrip" aria-label="Open your team"></button>
+      <div class="stage-head">
+        <span class="step" id="stageStep">Round 1 of 5</span>
+        <h2 id="stageTitle">Spin for a team</h2>
+        <p class="hint" id="stageSub" style="margin:4px 0 0"></p>
+      </div>
+      <div id="spinBox" class="console">
+        <div class="reels">
+          <div class="reel"><div class="strip" id="reelTeam"></div></div>
+          <div class="reel"><div class="strip" id="reelDec"></div></div>
+        </div>
+        <button class="btn ball big-spin" id="spinBtn">Spin</button>
+      </div>
+      <div id="drawBar" class="drawbar hidden"></div>
+      <div class="tools-row hidden" id="rosterTools">
+        <div class="chips" role="group" aria-label="Sort players" id="sortChips">
+          <span class="pmeta sortlbl" style="align-self:center;margin-right:4px">Sort:</span>
+          <button class="chip" data-sort="ovr" aria-pressed="true">Rating</button>
+          <button class="chip" data-sort="pts" aria-pressed="false">Points</button>
+          <button class="chip" data-sort="reb" aria-pressed="false">Rebounds</button>
+          <button class="chip" data-sort="ast" aria-pressed="false">Assists</button>
+          <button class="chip" data-sort="def" aria-pressed="false">Defense</button>
+        </div>
+      </div>
+      <div class="stage-scroll" id="stageScroll">
+        <div id="spinPreview" class="spin-preview mobile-only"><svg class="court" id="courtMini" viewBox="0 0 500 420" role="img" aria-label="Your team so far"></svg><div class="teamscore" id="miniScore"></div></div>
+        <div class="roster" id="roster"></div>
+        <div id="readyBox" class="hidden"></div>
+      </div>
+    </section>
+
+    <aside class="teamcol" aria-labelledby="h-court">
+      <section class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 id="h-court" style="font-size:20px">Your team</h2><span class="pmeta" id="courtHint"></span><button class="btn sheet-x" id="sheetClose">Close</button></div>
+        <div class="court-wrap" style="margin-top:8px"><svg class="court" id="court" viewBox="0 0 500 420" role="img" aria-label="Basketball court with your lineup"></svg></div>
+        <div class="teamscore" id="teamscore"></div>
+        <ul class="board-list" id="boardList" style="margin-top:12px"></ul>
+        <p class="pmeta" style="margin:-8px 0 0">Tap a past pick to look at that roster again.</p>
+        <details class="guide"><summary>How do ratings work?</summary><div id="ratingHelp" style="font-size:13.5px"></div></details>
+        <details class="guide"><summary>What do perks do?</summary><div class="legend-cats" id="guide"></div></details>
+        <details class="guide"><summary>More options</summary>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
+            <label class="toggle"><input type="checkbox" id="hideStats"> Hide stats</label>
+            <button class="btn" id="reset">Start over</button>
+          </div>
+        </details>
+      </section>
+    </aside>
+  </div>
+
+  <section class="hidden" id="chView" aria-label="Challenges"><div id="chBody"></div></section>
+
+  <section class="panel hidden" id="season" aria-labelledby="h-season" style="margin-top:8px">
+    <h2 class="sec-h" id="h-season" style="margin-bottom:12px">Regular season</h2>
+    <div id="seasonCTA" class="ctabox hidden"></div>
+    <div class="board">
+      <div>
+        <div class="record num" id="record" aria-live="polite">0–<span class="l">0</span></div>
+        <div class="record-sub" id="recordSub">Game 0 of 82</div>
+      </div>
+      <div class="ticker" id="ticker"></div>
+    </div>
+    <div class="ctrl">
+      <button class="btn primary" id="pauseBtn" style="min-width:96px">Pause</button>
+      <div class="seg" role="group" aria-label="Playback speed" id="seasonSeg">
+        <button data-speed="170" aria-pressed="false">Slow</button>
+        <button data-speed="45" aria-pressed="true">Fast</button>
+        <button data-speed="0" aria-pressed="false">Skip to end</button>
+      </div>
+    </div>
+    <div class="seis-scroll"><svg class="seis" id="seis" viewBox="0 0 1000 260" role="img" aria-label="Every game this season"></svg></div>
+    <div class="legend"><span><i style="background:var(--win)"></i>Win (taller bar = bigger win)</span><span><i style="background:var(--loss)"></i>Loss</span><span><i style="background:#DB2777"></i>Clutch win</span><span>Hover or tap a bar for details</span></div>
+
+    <div id="seasonEnd" class="hidden">
+      <details class="expand" id="statsBox">
+        <summary>See stats</summary>
+        <div class="inner">
+          <div class="block" id="awards" style="margin-top:4px">
+            <h3 class="sec-h" style="font-size:19px">Awards</h3>
+            <p class="hint">Voted across the whole league: your players and the best players on every other team. Stats, team success and games played all count.</p>
+            <div class="awards" id="awardCards"></div>
+            <div class="block" id="leaders" style="margin-top:22px"></div>
+          </div>
+          <div class="block" id="players">
+            <h3 class="sec-h" style="font-size:19px">Player stats</h3>
+            <p class="hint">Per game. "Value" is how many team rating points you would lose without him.</p>
+            <div class="tbl-wrap"><table class="stats" id="statTable"></table></div>
+          </div>
+          <div class="after">
+            <div>
+              <h3>Was it luck?</h3>
+              <p class="hint">We replayed your season 2,000 times with the same five.</p>
+              <div class="odds-row">
+                <div><div class="hint" style="margin:0">Perfect 82–0 seasons</div><div class="big-odds" id="odds82"></div></div>
+                <div><div class="hint" style="margin:0">Typical record</div><div class="big-odds" id="oddsMed"></div></div>
+              </div>
+              <svg id="hist" viewBox="0 0 520 190" style="width:100%;height:auto" role="img" aria-label="How often each record happened"></svg>
+            </div>
+            <div>
+              <h3>How your team rating adds up</h3>
+              <p class="hint" id="netLine"></p>
+              <div id="parts" style="font-size:14px"></div>
+              <div id="perkLine" class="hint"></div>
+            </div>
+            <div style="grid-column:1/-1">
+              <h3 id="lossTitle">Every loss</h3>
+              <ul class="losses" id="losses"></ul>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="playoffs" aria-labelledby="h-po" style="margin-top:16px">
+    <div class="po-head">
+      <div>
+        <h2 class="sec-h" id="h-po">Playoffs</h2>
+        <p class="hint" id="poSub" style="margin:0;min-height:21px"></p>
+      </div>
+      <div class="seg" role="group" aria-label="Playoff speed" id="poSeg">
+        <button data-speed="650" aria-pressed="false">Slow</button>
+        <button data-speed="220" aria-pressed="true">Fast</button>
+        <button data-speed="0" aria-pressed="false">Skip to end</button>
+      </div>
+    </div>
+    <div id="poBanner" style="min-height:0"></div>
+    <div id="poTop" class="hidden"><div class="cta-row" style="margin:4px 0 14px"><button class="btn ball cta" id="againBtn">Play again</button></div><div id="scoreCard"></div></div>
+    <div class="ticker" id="poTicker" style="margin-bottom:14px"></div>
+    <div class="porun" id="poRun"></div>
+    <button class="btn bracket-toggle" id="bracketToggle">Show full bracket</button>
+    <div class="bracket-scroll"><div class="bracket" id="bracket"></div></div>
+    <div id="poEnd" class="hidden">
+      <details class="expand">
+        <summary>See playoff stats</summary>
+        <div class="inner">
+          <div class="after" style="margin-top:0">
+            <div>
+              <h3>Was it luck?</h3>
+              <p class="hint">We replayed these playoffs 1,000 times.</p>
+              <div class="odds-row">
+                <div><div class="hint" style="margin:0">Won the title</div><div class="big-odds" id="oddTitle"></div></div>
+                <div><div class="hint" style="margin:0">Went 16–0</div><div class="big-odds" id="oddSweep"></div></div>
+              </div>
+            </div>
+            <div id="fmvp"></div>
+          </div>
+          <div class="block" id="poLeaders" style="margin-top:22px"></div>
+          <div class="block" style="margin-top:22px">
+            <h3 class="sec-h" style="font-size:19px">Your playoff stats</h3>
+            <div class="tbl-wrap"><table class="stats" id="poTable"></table></div>
+          </div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+</div>
+
+
+</main>
+</div>
+<div class="sheet-dim" id="sheetDim"></div>
+<div class="tip" id="tip"></div>
+<button class="toast" id="toast" aria-live="polite"></button>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
